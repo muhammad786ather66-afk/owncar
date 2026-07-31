@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="128" fill="#10B981"/>
+  <rect x="24" y="24" width="464" height="464" rx="104" stroke="#059669" stroke-width="8" fill="none"/>
+  <!-- Car Silhouette -->
+  <path d="M120 320L150 210C156 188 176 172 200 172H312C336 172 356 188 362 210L392 320H120Z" fill="#FFFFFF" opacity="0.9"/>
+  <rect x="96" y="300" width="320" height="70" rx="20" fill="#FFFFFF"/>
+  <!-- Windows -->
+  <path d="M168 214H244V280H148L168 214Z" fill="#0F172A"/>
+  <path d="M268 214H344L364 280H268V214Z" fill="#0F172A"/>
+  <!-- Wheels -->
+  <circle cx="160" cy="370" r="34" fill="#0F172A"/>
+  <circle cx="160" cy="370" r="14" fill="#10B981"/>
+  <circle cx="352" cy="370" r="34" fill="#0F172A"/>
+  <circle cx="352" cy="370" r="14" fill="#10B981"/>
+  <!-- Headlights -->
+  <circle cx="120" cy="336" r="12" fill="#FBBF24"/>
+  <circle cx="392" cy="336" r="12" fill="#FBBF24"/>
+  <!-- Badge text 'PK' -->
+  <rect x="200" y="324" width="112" height="28" rx="6" fill="#0F172A"/>
+  <text x="256" y="344" font-family="sans-serif" font-weight="bold" font-size="16" fill="#10B981" text-anchor="middle">APNI CAR</text>
+</svg>

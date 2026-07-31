@@ -1,0 +1,16 @@
+name = "apni-car-backend"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "apnicar-db"
+database_id = "apnicar-db-id-placeholder"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "apnicar-documents"
+
+[vars]
+ENVIRONMENT = "production"
+JWT_SECRET = "apni-car-super-secret-jwt-key-change-in-prod"

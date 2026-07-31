@@ -1,0 +1,10 @@
+{
+  "name": "Apni Car",
+  "description": "Production-ready PWA Ride-Hailing Platform with Zero Commission for Drivers and Seamless Rides for Passengers.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
