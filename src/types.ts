@@ -52,7 +52,31 @@ export interface Subscription {
   created_at: string;
 }
 
-export type TripStatus = 'requested' | 'accepted' | 'in_progress' | 'completed' | 'cancelled';
+export type TripStatus =
+  | 'requested'
+  | 'searching'
+  | 'accepted'
+  | 'driver_arriving'
+  | 'driver_arrived'
+  | 'started'
+  | 'completed'
+  | 'cancelled';
+
+export interface TripOffer {
+  id: string;
+  trip_id: string;
+  driver_id: string;
+  status: 'pending' | 'accepted' | 'declined' | 'expired';
+  created_at: string;
+  trip?: Trip;
+  pickup_address?: string;
+  dropoff_address?: string;
+  fare_amount?: number;
+  distance_km?: number;
+  estimated_mins?: number;
+  vehicle_type?: VehicleType;
+  distance_to_pickup_km?: number;
+}
 
 export interface Trip {
   id: string;

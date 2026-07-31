@@ -82,8 +82,17 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
     setError('');
     try {
       const res = await api.login(usernameOrEmail, password);
-      localStorage.setItem('apnicar_token', res.token);
-      onLoginSuccess(res.user, res.driver, res.token);
+      if (res.token) {
+        localStorage.setItem('apnicar_token', res.token);
+      }
+      let driverData = res.driver || null;
+      if (res.user?.role === 'driver' && !driverData) {
+        try {
+          const drvRes: any = await api.getDriverMe();
+          driverData = drvRes.driver || drvRes;
+        } catch (e) {}
+      }
+      onLoginSuccess(res.user, driverData, res.token);
       onClose();
     } catch (err: any) {
       if (err.data?.requires_verification) {
@@ -114,13 +123,14 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
         password: regPassword,
         mobile_number: mobileNumber,
       });
-      setVerifyEmail(email);
-      if (res.verification_code_demo) {
-        setVerifyCode(res.verification_code_demo);
-        setDemoCodeNotice(`Verification Code generated: ${res.verification_code_demo}`);
+      if (res.token && res.user) {
+        onLoginSuccess(res.user, null, res.token);
+        onClose();
+      } else {
+        setSuccessMsg(res.message || 'Registration successful! Please sign in with your account.');
+        setActiveTab('login');
+        setUsernameOrEmail(email || username);
       }
-      setActiveTab('verify');
-      setSuccessMsg('Registration successful! Please verify your email code.');
     } catch (err: any) {
       setError(err.message || 'Registration failed');
     } finally {
@@ -145,7 +155,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
         mobile_number: mobileNumber,
         cnic,
         driving_licence: drivingLicence,
-        vehicle_type: vehicleType,
+        service_type_id: vehicleType,
         vehicle_brand: vehicleBrand,
         vehicle_model: vehicleModel,
         vehicle_colour: vehicleColour,
@@ -155,13 +165,9 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
         licence_doc_url: licenceDocUrl,
         registration_doc_url: regDocUrl,
       });
-      setVerifyEmail(email);
-      if (res.verification_code_demo) {
-        setVerifyCode(res.verification_code_demo);
-        setDemoCodeNotice(`Verification Code generated: ${res.verification_code_demo}`);
-      }
-      setActiveTab('verify');
-      setSuccessMsg('Driver registered! Verify email code to proceed (Requires Admin Approval).');
+      setSuccessMsg(res.message || 'Application submitted successfully. Waiting for admin approval.');
+      setActiveTab('login');
+      setUsernameOrEmail(email || username);
     } catch (err: any) {
       setError(err.message || 'Driver registration failed');
     } finally {

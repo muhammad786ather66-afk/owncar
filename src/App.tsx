@@ -30,7 +30,7 @@ export default function App() {
   useEffect(() => {
     initPWA();
 
-    // Check saved local user session if present
+    // Verify session with Cloudflare backend
     const savedToken = localStorage.getItem('apnicar_token');
     const savedUserJson = localStorage.getItem('apnicar_user');
     const savedDriverJson = localStorage.getItem('apnicar_driver');
@@ -48,6 +48,35 @@ export default function App() {
         setDriver(JSON.parse(savedDriverJson));
       } catch (e) {}
     }
+
+    if (savedToken) {
+      api
+        .getMe()
+        .then((res) => {
+          if (res.user) {
+            setUser(res.user);
+            setActiveRole(res.user.role === 'admin' ? 'admin' : res.user.role);
+            localStorage.setItem('apnicar_user', JSON.stringify(res.user));
+          }
+          if (res.driver) {
+            setDriver(res.driver);
+            localStorage.setItem('apnicar_driver', JSON.stringify(res.driver));
+          } else if (res.user?.role === 'driver') {
+            api.getDriverMe().then((drvRes: any) => {
+              const drv = drvRes.driver || drvRes;
+              if (drv && drv.id) {
+                setDriver(drv);
+                localStorage.setItem('apnicar_driver', JSON.stringify(drv));
+              }
+            }).catch(() => {});
+          }
+        })
+        .catch((err) => {
+          if (err.status === 401 || err.status === 403) {
+            handleLogout();
+          }
+        });
+    }
   }, []);
 
   // Sync notifications
@@ -56,7 +85,7 @@ export default function App() {
     fetchNotifs();
     const timer = setInterval(() => {
       fetchNotifs();
-    }, 5000);
+    }, 10000);
     return () => clearInterval(timer);
   }, [user]);
 
@@ -74,10 +103,23 @@ export default function App() {
     setActiveRole(usr.role === 'admin' ? 'admin' : usr.role);
     localStorage.setItem('apnicar_user', JSON.stringify(usr));
     if (drv) localStorage.setItem('apnicar_driver', JSON.stringify(drv));
+
+    // Also fetch driver details if user is a driver and drv isn't set yet
+    if (usr.role === 'driver' && !drv) {
+      api.getDriverMe().then((drvRes: any) => {
+        const fetchedDrv = drvRes.driver || drvRes;
+        if (fetchedDrv && fetchedDrv.id) {
+          setDriver(fetchedDrv);
+          localStorage.setItem('apnicar_driver', JSON.stringify(fetchedDrv));
+        }
+      }).catch(() => {});
+    }
+
     fetchNotifs();
   };
 
   const handleLogout = () => {
+    api.logout().catch(() => {});
     setUser(null);
     setDriver(null);
     localStorage.removeItem('apnicar_token');

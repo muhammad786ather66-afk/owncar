@@ -50,9 +50,38 @@ export const DriverDashboard: React.FC<Props> = ({
     checkDriverStatus();
     const interval = setInterval(() => {
       checkDriverStatus();
-    }, 3000);
+    }, 4000);
     return () => clearInterval(interval);
   }, [driver.id]);
+
+  // Throttled live location updater (Section 14)
+  useEffect(() => {
+    if (!isOnline || !navigator.geolocation) return;
+
+    let lastSentTime = 0;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const now = Date.now();
+        // Throttle updates to at most once every 15 seconds
+        if (now - lastSentTime > 15000) {
+          lastSentTime = now;
+          api
+            .updateDriverLocation({
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              accuracy: pos.coords.accuracy,
+              speed: pos.coords.speed || undefined,
+              heading: pos.coords.heading || undefined,
+            })
+            .catch(() => {});
+        }
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [isOnline]);
 
   const checkDriverStatus = async () => {
     try {
