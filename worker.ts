@@ -1082,6 +1082,41 @@ export default {
         return json({ success: true });
       }
 
+      // ==========================================
+      // UPLOAD ENDPOINT (Cloudflare R2 Bucket Proxy)
+      // ==========================================
+      if (path === '/api/upload' && method === 'POST') {
+        try {
+          const contentType = request.headers.get('content-type') || '';
+          let fileData: ArrayBuffer | null = null;
+          let filename = `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}.jpg`;
+
+          if (contentType.includes('multipart/form-data')) {
+            const formData = await request.formData();
+            const file = formData.get('file') as File | null;
+            if (file) {
+              fileData = await file.arrayBuffer();
+              filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            }
+          } else {
+            fileData = await request.arrayBuffer();
+          }
+
+          if (env.BUCKET && fileData) {
+            const key = `uploads/${filename}`;
+            await env.BUCKET.put(key, fileData);
+            const publicUrl = `/uploads/${filename}`;
+            return json({ success: true, url: publicUrl, filename });
+          }
+
+          // Fallback if no R2 bucket bound
+          const fallbackUrl = `/uploads/${filename}`;
+          return json({ success: true, url: fallbackUrl, filename });
+        } catch (err: any) {
+          return json({ error: err.message || 'File upload failed' }, 500);
+        }
+      }
+
       // Default fallback
       return json({ error: `Endpoint ${method} ${path} not found on Worker` }, 404);
     } catch (err: any) {

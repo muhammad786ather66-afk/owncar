@@ -58,6 +58,17 @@
       "mobile_number": "+923000000010",
       "email_verified": 1,
       "created_at": "2026-07-31T15:30:07.669Z"
+    },
+    {
+      "id": "usr-1785513847721-s5uuk",
+      "role": "rider",
+      "username": "final_check_user",
+      "full_name": "Final Verification User",
+      "email": "final_check@apnicar.pk",
+      "password_hash": "$2b$10$.p5FgIWud.2RuT.2KGdTaOgb8HhpxQ8gfvlPoJrR4PInLgrCeUDIu",
+      "mobile_number": "+923009998877",
+      "email_verified": 1,
+      "created_at": "2026-07-31T16:04:07.822Z"
     }
   ],
   "drivers": [
@@ -205,6 +216,12 @@
       "email": "newrider10@apnicar.pk",
       "token": "session-tok-1785511807669-e8xnt",
       "expires_at": "2027-07-31T15:30:07.669Z"
+    },
+    {
+      "id": "tok-1785513847822",
+      "email": "final_check@apnicar.pk",
+      "token": "session-tok-1785513847822-eln5k",
+      "expires_at": "2027-07-31T16:04:07.822Z"
     }
   ]
 }
