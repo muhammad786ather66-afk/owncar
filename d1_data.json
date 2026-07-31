@@ -1,0 +1,210 @@
+{
+  "users": [
+    {
+      "id": "usr-admin-1",
+      "role": "admin",
+      "username": "admin",
+      "full_name": "Apni Car Admin",
+      "email": "admin@apnicar.pk",
+      "password_hash": "$2b$10$NPrr4apoT4LS0FdIMbfOaOInP4AgXTwSzH4h3emFU7r97cEX3irPu",
+      "mobile_number": "+923001234567",
+      "email_verified": 1,
+      "avatar_url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+      "created_at": "2026-07-31T14:56:52.144Z"
+    },
+    {
+      "id": "usr-driver-1",
+      "role": "driver",
+      "username": "tariq_driver",
+      "full_name": "Tariq Mehmood",
+      "email": "tariq@gmail.com",
+      "password_hash": "$2b$10$Ys49HgcM77fO0Wkj9Tb/8./mK4tWnOZQQv9Q12U0v5opddZ9ereHO",
+      "mobile_number": "+923019876543",
+      "email_verified": 1,
+      "avatar_url": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
+      "created_at": "2026-07-31T14:56:52.144Z"
+    },
+    {
+      "id": "usr-driver-2",
+      "role": "driver",
+      "username": "ali_bike",
+      "full_name": "Ali Raza",
+      "email": "ali.raza@gmail.com",
+      "password_hash": "$2b$10$Ys49HgcM77fO0Wkj9Tb/8./mK4tWnOZQQv9Q12U0v5opddZ9ereHO",
+      "mobile_number": "+923125554433",
+      "email_verified": 1,
+      "avatar_url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150",
+      "created_at": "2026-07-31T14:56:52.144Z"
+    },
+    {
+      "id": "usr-rider-1",
+      "role": "rider",
+      "username": "hassan_rider",
+      "full_name": "Hassan Ahmed",
+      "email": "hassan@gmail.com",
+      "password_hash": "$2b$10$9J3SxQRtb2ZNq/ueI6yfgeqp/t.1HpWhxdKfN/EOSehxWvovd3SNO",
+      "mobile_number": "+923331112233",
+      "email_verified": 1,
+      "avatar_url": "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150",
+      "created_at": "2026-07-31T14:56:52.144Z"
+    },
+    {
+      "id": "usr-1785511807553-is76b",
+      "role": "rider",
+      "username": "newrider10",
+      "full_name": "New Rider 10",
+      "email": "newrider10@apnicar.pk",
+      "password_hash": "$2b$10$nK/geoAJALkN.WvAUmt8YOnR0gP95GWQGvotpdYnimahfl5/R/kiy",
+      "mobile_number": "+923000000010",
+      "email_verified": 1,
+      "created_at": "2026-07-31T15:30:07.669Z"
+    }
+  ],
+  "drivers": [
+    {
+      "id": "drv-1",
+      "user_id": "usr-driver-1",
+      "cnic": "35202-1234567-1",
+      "driving_licence": "LHR-987654",
+      "vehicle_type": "Mini",
+      "vehicle_brand": "Suzuki",
+      "vehicle_model": "Alto VXR 2022",
+      "vehicle_colour": "White",
+      "vehicle_reg_number": "LEA-5678",
+      "is_approved": 1,
+      "cnic_front_url": "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400",
+      "cnic_back_url": "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400",
+      "licence_doc_url": "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400",
+      "registration_doc_url": "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400",
+      "is_online": 1,
+      "current_lat": 31.5204,
+      "current_lng": 74.3587,
+      "rating": 4.9,
+      "total_rides": 142
+    },
+    {
+      "id": "drv-2",
+      "user_id": "usr-driver-2",
+      "cnic": "35201-7654321-9",
+      "driving_licence": "LHR-543210",
+      "vehicle_type": "Bike",
+      "vehicle_brand": "Honda",
+      "vehicle_model": "CD 70 2023",
+      "vehicle_colour": "Red",
+      "vehicle_reg_number": "LEK-9988",
+      "is_approved": 1,
+      "cnic_front_url": "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400",
+      "cnic_back_url": "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400",
+      "licence_doc_url": "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400",
+      "registration_doc_url": "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400",
+      "is_online": 1,
+      "current_lat": 31.525,
+      "current_lng": 74.362,
+      "rating": 4.8,
+      "total_rides": 89
+    }
+  ],
+  "subscriptions": [
+    {
+      "id": "sub-1",
+      "driver_id": "drv-1",
+      "plan_type": "monthly",
+      "amount": 500,
+      "status": "active",
+      "starts_at": "2026-07-26T14:56:52.144Z",
+      "expires_at": "2026-08-25T14:56:52.144Z",
+      "payment_tx_ref": "TXN-JZC-998822",
+      "created_at": "2026-07-31T14:56:52.144Z"
+    },
+    {
+      "id": "sub-2",
+      "driver_id": "drv-2",
+      "plan_type": "weekly",
+      "amount": 200,
+      "status": "active",
+      "starts_at": "2026-07-29T14:56:52.144Z",
+      "expires_at": "2026-08-05T14:56:52.144Z",
+      "payment_tx_ref": "TXN-EP-334411",
+      "created_at": "2026-07-31T14:56:52.144Z"
+    }
+  ],
+  "trips": [],
+  "notifications": [
+    {
+      "id": "notif-1",
+      "user_id": "usr-driver-1",
+      "title": "Subscription Active",
+      "message": "Your PKR 500 Monthly subscription is active until next month.",
+      "is_read": 0,
+      "type": "success",
+      "created_at": "2026-07-31T14:56:52.145Z"
+    },
+    {
+      "id": "notif-2",
+      "user_id": "usr-rider-1",
+      "title": "Welcome to Apni Car",
+      "message": "Enjoy zero commission rides with verified local drivers in Pakistan!",
+      "is_read": 0,
+      "type": "info",
+      "created_at": "2026-07-31T14:56:52.145Z"
+    }
+  ],
+  "cities": [
+    {
+      "id": "city-lahore",
+      "name": "Lahore",
+      "province": "Punjab",
+      "is_active": 1,
+      "base_fare": 50,
+      "per_km_rate": 25
+    },
+    {
+      "id": "city-karachi",
+      "name": "Karachi",
+      "province": "Sindh",
+      "is_active": 1,
+      "base_fare": 60,
+      "per_km_rate": 28
+    },
+    {
+      "id": "city-islamabad",
+      "name": "Islamabad",
+      "province": "Federal",
+      "is_active": 1,
+      "base_fare": 65,
+      "per_km_rate": 30
+    },
+    {
+      "id": "city-rawalpindi",
+      "name": "Rawalpindi",
+      "province": "Punjab",
+      "is_active": 1,
+      "base_fare": 55,
+      "per_km_rate": 26
+    },
+    {
+      "id": "city-peshawar",
+      "name": "Peshawar",
+      "province": "KPK",
+      "is_active": 1,
+      "base_fare": 50,
+      "per_km_rate": 24
+    },
+    {
+      "id": "city-multan",
+      "name": "Multan",
+      "province": "Punjab",
+      "is_active": 1,
+      "base_fare": 45,
+      "per_km_rate": 22
+    }
+  ],
+  "tokens": [
+    {
+      "id": "tok-1785511807669",
+      "email": "newrider10@apnicar.pk",
+      "token": "session-tok-1785511807669-e8xnt",
+      "expires_at": "2027-07-31T15:30:07.669Z"
+    }
+  ]
+}

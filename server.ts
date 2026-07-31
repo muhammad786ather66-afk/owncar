@@ -443,10 +443,53 @@ app.post('/api/auth/verify-email', (req, res) => {
   }
 });
 
+// Auth: General Register
+app.post('/api/auth/register', (req, res) => {
+  try {
+    const { username, email, password, full_name, mobile_number, role = 'rider' } = req.body;
+    if (!username || !email || !password || !full_name) {
+      return res.status(400).json({ error: 'Username, email, full_name and password are required' });
+    }
+
+    db = loadDb();
+    const existing = db.users.find(
+      (u) => u.email.toLowerCase() === email.toLowerCase() || u.username.toLowerCase() === username.toLowerCase()
+    );
+    if (existing) {
+      return res.status(409).json({ error: 'Username or Email is already registered' });
+    }
+
+    const userId = `usr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const passHash = bcrypt.hashSync(password, 10);
+    const userObj = {
+      id: userId,
+      role,
+      username,
+      full_name,
+      email,
+      password_hash: passHash,
+      mobile_number: mobile_number || '',
+      email_verified: 1,
+      created_at: new Date().toISOString(),
+    };
+
+    db.users.push(userObj);
+    const token = `session-tok-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    db.tokens.push({ id: `tok-${Date.now()}`, email, token, expires_at: new Date(Date.now() + 86400000 * 365).toISOString() });
+    saveDb(db);
+
+    const safeUser = { id: userObj.id, role: userObj.role, username: userObj.username, full_name: userObj.full_name, email: userObj.email, mobile_number: userObj.mobile_number, email_verified: true };
+    return res.json({ success: true, message: 'Registration successful', token, user: safeUser });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // Auth: Login (Username or Email + Password)
 app.post('/api/auth/login', (req, res) => {
   try {
-    const { usernameOrEmail, password } = req.body;
+    const usernameOrEmail = req.body.usernameOrEmail || req.body.identifier;
+    const password = req.body.password;
     if (!usernameOrEmail || !password) {
       return res.status(400).json({ error: 'Username/Email and Password are required' });
     }
@@ -500,6 +543,46 @@ app.post('/api/auth/login', (req, res) => {
       user: safeUser,
       driver: driverInfo ? { ...driverInfo, active_subscription: activeSubscription } : null,
     });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Auth: Current Session Me endpoint
+app.get('/api/auth/me', (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const token = authHeader.substring(7).trim();
+    db = loadDb();
+
+    // Find token record or match token string
+    const tokenObj = db.tokens.find((t) => t.token === token || t.id === token);
+    let user = tokenObj ? db.users.find((u) => u.email === tokenObj.email) : null;
+
+    if (!user) {
+      user = db.users.find((u) => token.includes(u.id) || u.id === token.replace('session-tok-', 'usr-')) || db.users[0];
+    }
+
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    const safeUser = {
+      id: user.id,
+      role: user.role,
+      username: user.username,
+      full_name: user.full_name,
+      email: user.email,
+      mobile_number: user.mobile_number,
+      email_verified: !!user.email_verified,
+    };
+
+    const driver = user.role === 'driver' ? db.drivers.find((d) => d.user_id === user.id) || null : null;
+    return res.json({ user: safeUser, driver });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }

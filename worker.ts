@@ -29,6 +29,87 @@ function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 }
 
+// Utility: Password Hashing (Web Crypto API for Cloudflare Workers)
+const PBKDF2_ITERATIONS = 100000;
+
+async function hashPassword(password: string): Promise<string> {
+  const enc = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(password),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits']
+  );
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt,
+      iterations: PBKDF2_ITERATIONS,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    256
+  );
+  const hashArray = new Uint8Array(derivedBits);
+  const saltHex = Array.from(salt).map((b) => b.toString(16).padStart(2, '0')).join('');
+  const hashHex = Array.from(hashArray).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `pbkdf2:${PBKDF2_ITERATIONS}:${saltHex}:${hashHex}`;
+}
+
+async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  if (!storedHash) return false;
+
+  if (!storedHash.startsWith('pbkdf2:')) {
+    return password === storedHash;
+  }
+
+  const parts = storedHash.split(':');
+  if (parts.length !== 4) return false;
+
+  const rawIterations = parseInt(parts[1], 10) || PBKDF2_ITERATIONS;
+  // Cloudflare Workers limit PBKDF2 iteration count to max 100,000
+  const safeIterations = Math.min(rawIterations, 100000);
+
+  const saltHex = parts[2];
+  const expectedHashHex = parts[3];
+
+  const saltMatch = saltHex.match(/.{1,2}/g);
+  if (!saltMatch) return false;
+  const salt = new Uint8Array(saltMatch.map((byte) => parseInt(byte, 16)));
+
+  try {
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(password),
+      { name: 'PBKDF2' },
+      false,
+      ['deriveBits']
+    );
+
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt,
+        iterations: safeIterations,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      256
+    );
+
+    const hashArray = new Uint8Array(derivedBits);
+    const actualHashHex = Array.from(hashArray).map((b) => b.toString(16).padStart(2, '0')).join('');
+
+    return actualHashHex === expectedHashHex;
+  } catch (err) {
+    console.error('PBKDF2 password verification error:', err);
+    return false;
+  }
+}
+
 // Helper: Extract Bearer Token
 function getBearerToken(request: Request): string | null {
   const auth = request.headers.get('Authorization');
@@ -209,7 +290,7 @@ export default {
 
         const userId = generateId('usr');
         const token = generateId('session-tok');
-        const passHash = password; // In Cloudflare Worker, store plain or hashed string
+        const passHash = await hashPassword(password);
 
         if (env.DB) {
           // Check existing
@@ -252,6 +333,11 @@ export default {
           ).bind(identifier, identifier, identifier).first();
 
           if (!user) {
+            return json({ error: 'Invalid username/email or password' }, 401);
+          }
+
+          const isValid = await verifyPassword(password, user.password_hash);
+          if (!isValid) {
             return json({ error: 'Invalid username/email or password' }, 401);
           }
 
