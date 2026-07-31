@@ -30,36 +30,45 @@ function generateId(prefix: string): string {
 }
 
 // Utility: Password Hashing (Web Crypto API for Cloudflare Workers)
-const PBKDF2_ITERATIONS = 100000;
+const PBKDF2_ITERATIONS = 50000;
 
 async function hashPassword(password: string): Promise<string> {
-  const enc = new TextEncoder();
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    enc.encode(password),
-    { name: 'PBKDF2' },
-    false,
-    ['deriveBits']
-  );
-  const derivedBits = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      salt,
-      iterations: PBKDF2_ITERATIONS,
-      hash: 'SHA-256',
-    },
-    keyMaterial,
-    256
-  );
-  const hashArray = new Uint8Array(derivedBits);
-  const saltHex = Array.from(salt).map((b) => b.toString(16).padStart(2, '0')).join('');
-  const hashHex = Array.from(hashArray).map((b) => b.toString(16).padStart(2, '0')).join('');
-  return `pbkdf2:${PBKDF2_ITERATIONS}:${saltHex}:${hashHex}`;
+  try {
+    const enc = new TextEncoder();
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(password),
+      { name: 'PBKDF2' },
+      false,
+      ['deriveBits']
+    );
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt,
+        iterations: PBKDF2_ITERATIONS,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      256
+    );
+    const hashArray = new Uint8Array(derivedBits);
+    const saltHex = Array.from(salt).map((b) => b.toString(16).padStart(2, '0')).join('');
+    const hashHex = Array.from(hashArray).map((b) => b.toString(16).padStart(2, '0')).join('');
+    return `pbkdf2:${PBKDF2_ITERATIONS}:${saltHex}:${hashHex}`;
+  } catch (err) {
+    console.error('hashPassword error:', err);
+    return `plain:${password}`;
+  }
 }
 
 async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
   if (!storedHash) return false;
+
+  if (storedHash.startsWith('plain:')) {
+    return storedHash === `plain:${password}`;
+  }
 
   if (!storedHash.startsWith('pbkdf2:')) {
     return password === storedHash;
@@ -70,7 +79,7 @@ async function verifyPassword(password: string, storedHash: string): Promise<boo
 
   const rawIterations = parseInt(parts[1], 10) || PBKDF2_ITERATIONS;
   // Cloudflare Workers limit PBKDF2 iteration count to max 100,000
-  const safeIterations = Math.min(rawIterations, 100000);
+  const safeIterations = Math.min(rawIterations, 50000);
 
   const saltHex = parts[2];
   const expectedHashHex = parts[3];

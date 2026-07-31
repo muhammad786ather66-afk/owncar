@@ -536,6 +536,8 @@ app.post('/api/auth/login', (req, res) => {
 
     const { password_hash, ...safeUser } = user;
     const token = 'session-tok-' + Date.now() + '-' + Math.random().toString(36).substring(2);
+    db.tokens.push({ id: `tok-${Date.now()}`, email: user.email, token, expires_at: new Date(Date.now() + 86400000 * 365).toISOString() });
+    saveDb(db);
 
     return res.json({
       success: true,
@@ -564,11 +566,11 @@ app.get('/api/auth/me', (req, res) => {
     let user = tokenObj ? db.users.find((u) => u.email === tokenObj.email) : null;
 
     if (!user) {
-      user = db.users.find((u) => token.includes(u.id) || u.id === token.replace('session-tok-', 'usr-')) || db.users[0];
+      user = db.users.find((u) => token.includes(u.id) || u.id === token.replace('session-tok-', 'usr-')) || null;
     }
 
     if (!user) {
-      return res.status(401).json({ error: 'User not found' });
+      return res.status(401).json({ error: 'User session not found or expired' });
     }
 
     const safeUser = {
