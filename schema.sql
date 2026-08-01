@@ -109,6 +109,21 @@ CREATE INDEX IF NOT EXISTS idx_trips_rider_id ON trips(rider_id);
 CREATE INDEX IF NOT EXISTS idx_trips_driver_id ON trips(driver_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_driver ON subscriptions(driver_id);
 
+CREATE TABLE IF NOT EXISTS driver_documents (
+    id TEXT PRIMARY KEY,
+    driver_id TEXT NOT NULL,
+    doc_type TEXT NOT NULL,
+    file_key TEXT NOT NULL,
+    file_url TEXT NOT NULL,
+    original_filename TEXT,
+    content_type TEXT,
+    size INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(driver_id) REFERENCES drivers(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_driver_docs_driver_id ON driver_documents(driver_id);
+
 -- Initial Cities Default Data
 INSERT OR IGNORE INTO cities (id, name, province, is_active, base_fare, per_km_rate) VALUES
 ('city-lahore', 'Lahore', 'Punjab', 1, 50, 25),

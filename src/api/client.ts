@@ -1,4 +1,4 @@
-import { User, Driver, Subscription, Trip, NotificationItem } from '../types';
+import { User, Driver, Subscription, Trip, NotificationItem, DriverDocument } from '../types';
 
 const DEFAULT_API_BASE = 'https://apnicar-backend.muhammad786-ather66.workers.dev';
 const API_BASE = (
@@ -168,20 +168,41 @@ export const api = {
     licence_doc_url?: string;
     registration_doc_url?: string;
   }) => {
-    const token = localStorage.getItem('apnicar_token');
+    let token = localStorage.getItem('apnicar_token');
 
-    // If user is not logged in yet, register user account first
+    // If user is not logged in yet, register user account first or auto-login if account exists
     if (!token && body.username && body.email && body.password) {
-      const regRes = await api.register({
-        username: body.username,
-        email: body.email,
-        password: body.password,
-        full_name: body.full_name || '',
-        mobile_number: body.mobile_number || '',
-        role: 'driver',
-      });
-      if (regRes.token) {
-        localStorage.setItem('apnicar_token', regRes.token);
+      try {
+        const regRes = await api.register({
+          username: body.username,
+          email: body.email,
+          password: body.password,
+          full_name: body.full_name || '',
+          mobile_number: body.mobile_number || '',
+          role: 'driver',
+        });
+        if (regRes.token) {
+          token = regRes.token;
+          localStorage.setItem('apnicar_token', regRes.token);
+        }
+      } catch (err: any) {
+        // If account or profile already exists (409), attempt to login with provided credentials
+        if (
+          err.status === 409 ||
+          (err.message && (err.message.includes('already exists') || err.message.includes('already registered')))
+        ) {
+          try {
+            const loginRes = await api.login(body.email || body.username, body.password);
+            if (loginRes.token) {
+              token = loginRes.token;
+              localStorage.setItem('apnicar_token', loginRes.token);
+            }
+          } catch (loginErr) {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
       }
     }
 
@@ -357,9 +378,12 @@ export const api = {
   },
 
   // Document Uploads (R2 bucket proxy or Object URL fallback)
-  uploadFile: async (file: File): Promise<string> => {
+  uploadFile: async (file: File, docType?: string, driverId?: string): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
+    if (docType) formData.append('doc_type', docType);
+    if (driverId) formData.append('driver_id', driverId);
+
     const token = localStorage.getItem('apnicar_token');
     try {
       const res = await fetch(`${API_BASE}/api/upload`, {
@@ -374,6 +398,15 @@ export const api = {
     } catch (e) {}
     // Fallback client URL if upload endpoint not yet bound
     return URL.createObjectURL(file);
+  },
+
+  getDriverDocuments: async (driverId: string): Promise<DriverDocument[]> => {
+    try {
+      const res = await request<{ documents: DriverDocument[] }>(`/api/drivers/${driverId}/documents`);
+      return res.documents || [];
+    } catch (e) {
+      return [];
+    }
   },
 
   // Subscriptions placeholder

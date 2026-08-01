@@ -63,7 +63,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
     try {
       // Compress image client side before sending to Cloudflare R2 proxy
       const compressed = await compressImage(file, 1280, 1280, 0.8);
-      const url = await api.uploadFile(compressed);
+      const url = await api.uploadFile(compressed, targetField);
 
       if (targetField === 'cnic_front') setCnicFrontUrl(url);
       if (targetField === 'cnic_back') setCnicBackUrl(url);

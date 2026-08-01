@@ -38,6 +38,18 @@ export interface Driver {
   user?: User;
 }
 
+export interface DriverDocument {
+  id: string;
+  driver_id: string;
+  doc_type: 'cnic_front' | 'cnic_back' | 'licence' | 'registration' | string;
+  file_key: string;
+  file_url: string;
+  original_filename?: string;
+  content_type?: string;
+  size?: number;
+  created_at?: string;
+}
+
 export type SubscriptionPlan = 'daily' | 'weekly' | 'monthly';
 
 export interface Subscription {

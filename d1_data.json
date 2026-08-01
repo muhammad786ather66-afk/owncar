@@ -91,6 +91,39 @@
       "mobile_number": "+923009998899",
       "email_verified": 1,
       "created_at": "2026-07-31T16:10:14.751Z"
+    },
+    {
+      "id": "usr-1785561792304-a1oo4",
+      "role": "driver",
+      "username": "driver_test_upload",
+      "full_name": "Upload Driver Test",
+      "email": "driver_upload@apnicar.pk",
+      "password_hash": "$2b$10$IEnr4O1lJapp2p0GDjgYguDx.knRw4jGcZ5BUqIpFM1RcUqBwPJ1O",
+      "mobile_number": "+923001112233",
+      "email_verified": 1,
+      "created_at": "2026-08-01T05:23:12.424Z"
+    },
+    {
+      "id": "usr-1785561844874-7837m",
+      "role": "driver",
+      "username": "doc_driver_101",
+      "full_name": "Doc Driver 101",
+      "email": "doc101@apnicar.pk",
+      "password_hash": "$2b$10$ij6.ikdrwl/QUY/FMkAVFukRvQVuwsPSrRYbbchdpoBdLQBwCxpLO",
+      "mobile_number": "+923001112244",
+      "email_verified": 1,
+      "created_at": "2026-08-01T05:24:04.991Z"
+    },
+    {
+      "id": "usr-1785563242012-q2rtl",
+      "role": "driver",
+      "username": "existing_user_driver",
+      "full_name": "Existing Driver Test",
+      "email": "existing_driver@apnicar.pk",
+      "password_hash": "$2b$10$JpmLnkbLOsT8e.Xx3LqJje9cwQaVxIP/1E/zO.1zdzeLzsXJC69Oq",
+      "mobile_number": "+923001119988",
+      "email_verified": 1,
+      "created_at": "2026-08-01T05:47:22.124Z"
     }
   ],
   "drivers": [
@@ -135,6 +168,48 @@
       "current_lng": 74.362,
       "rating": 4.8,
       "total_rides": 89
+    },
+    {
+      "id": "drv-1785561853459",
+      "user_id": "usr-1785561844874-7837m",
+      "cnic": "35202-9988776-5",
+      "driving_licence": "LIC-112233",
+      "vehicle_type": "Car",
+      "vehicle_brand": "Toyota",
+      "vehicle_model": "Corolla",
+      "vehicle_colour": "Silver",
+      "vehicle_reg_number": "LEA-5566",
+      "is_approved": 0,
+      "cnic_front_url": "http://localhost:3000/uploads/file-1785561848886-490260986.jpg",
+      "cnic_back_url": "http://localhost:3000/uploads/file-1785561848886-490260986.jpg",
+      "licence_doc_url": "",
+      "registration_doc_url": "",
+      "is_online": 0,
+      "current_lat": 31.5204,
+      "current_lng": 74.3587,
+      "rating": 5,
+      "total_rides": 0
+    },
+    {
+      "id": "drv-1785563252260",
+      "user_id": "usr-1785563242012-q2rtl",
+      "cnic": "35202-7777777-1",
+      "driving_licence": "LIC-777",
+      "vehicle_type": "Car",
+      "vehicle_brand": "Honda",
+      "vehicle_model": "Civic",
+      "vehicle_colour": "White",
+      "vehicle_reg_number": "REG-1234",
+      "is_approved": 0,
+      "cnic_front_url": "",
+      "cnic_back_url": "",
+      "licence_doc_url": "",
+      "registration_doc_url": "",
+      "is_online": 0,
+      "current_lat": 31.5204,
+      "current_lng": 74.3587,
+      "rating": 5,
+      "total_rides": 0
     }
   ],
   "subscriptions": [
@@ -262,6 +337,48 @@
       "email": "final99@apnicar.pk",
       "token": "session-tok-1785514217678-53m9zho01nq",
       "expires_at": "2027-07-31T16:10:17.678Z"
+    },
+    {
+      "id": "tok-1785561792425",
+      "email": "driver_upload@apnicar.pk",
+      "token": "session-tok-1785561792425-ucczw",
+      "expires_at": "2027-08-01T05:23:12.425Z"
+    },
+    {
+      "id": "tok-1785561844991",
+      "email": "doc101@apnicar.pk",
+      "token": "session-tok-1785561844991-gfl9q",
+      "expires_at": "2027-08-01T05:24:04.991Z"
+    },
+    {
+      "id": "tok-1785563242125",
+      "email": "existing_driver@apnicar.pk",
+      "token": "session-tok-1785563242125-368kd",
+      "expires_at": "2027-08-01T05:47:22.125Z"
+    }
+  ],
+  "driver_documents": [
+    {
+      "id": "doc-1785561853459-enem8",
+      "driver_id": "drv-1785561853459",
+      "doc_type": "cnic_front",
+      "file_key": "uploads/file-1785561848886-490260986.jpg",
+      "file_url": "http://localhost:3000/uploads/file-1785561848886-490260986.jpg",
+      "original_filename": "cnic_front.jpg",
+      "content_type": "image/jpeg",
+      "size": 0,
+      "created_at": "2026-08-01T05:24:13.459Z"
+    },
+    {
+      "id": "doc-1785561853459-b4tbf",
+      "driver_id": "drv-1785561853459",
+      "doc_type": "cnic_back",
+      "file_key": "uploads/file-1785561848886-490260986.jpg",
+      "file_url": "http://localhost:3000/uploads/file-1785561848886-490260986.jpg",
+      "original_filename": "cnic_back.jpg",
+      "content_type": "image/jpeg",
+      "size": 0,
+      "created_at": "2026-08-01T05:24:13.459Z"
     }
   ]
 }

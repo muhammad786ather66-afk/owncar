@@ -254,6 +254,19 @@ export default {
             payment_status TEXT NOT NULL DEFAULT 'pending',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
           );
+
+          CREATE TABLE IF NOT EXISTS driver_documents (
+            id TEXT PRIMARY KEY,
+            driver_id TEXT NOT NULL,
+            doc_type TEXT NOT NULL,
+            file_key TEXT NOT NULL,
+            file_url TEXT NOT NULL,
+            original_filename TEXT,
+            content_type TEXT,
+            size INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(driver_id) REFERENCES drivers(id) ON DELETE CASCADE
+          );
         `).catch(() => {});
       }
 
@@ -409,33 +422,104 @@ export default {
         if (!user) return json({ error: 'Authentication required' }, 401);
 
         const body: any = await request.json();
-        const driverId = generateId('drv');
 
         if (env.DB) {
-          await env.DB.prepare(
-            `INSERT INTO drivers (
-              id, user_id, cnic, driving_licence, vehicle_type, vehicle_brand, vehicle_model,
-              vehicle_colour, vehicle_reg_number, is_approved, is_online, is_available,
-              cnic_front_url, cnic_back_url, licence_doc_url, registration_doc_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 1, ?, ?, ?, ?)`
-          ).bind(
-            driverId,
-            user.id,
-            body.cnic || '35202-0000000-0',
-            body.driving_licence || 'LIC-00000',
-            body.service_type_id || body.vehicle_type || 'Car',
-            body.vehicle_brand || 'Suzuki',
-            body.vehicle_model || 'Alto',
-            body.vehicle_colour || body.vehicle_color || 'White',
-            body.registration_number || body.vehicle_reg_number || 'REG-1234',
-            body.cnic_front_url || '',
-            body.cnic_back_url || '',
-            body.licence_doc_url || '',
-            body.registration_doc_url || ''
-          );
+          // Ensure user role is updated to driver
+          await env.DB.prepare(`UPDATE users SET role = 'driver' WHERE id = ?`).bind(user.id).catch(() => {});
+
+          const existingDriver: any = await env.DB.prepare(`SELECT id FROM drivers WHERE user_id = ? LIMIT 1`).bind(user.id).first();
+          let driverId = existingDriver?.id as string;
+
+          if (existingDriver && driverId) {
+            // Update existing driver profile
+            await env.DB.prepare(
+              `UPDATE drivers SET
+                cnic = COALESCE(NULLIF(?, ''), cnic),
+                driving_licence = COALESCE(NULLIF(?, ''), driving_licence),
+                vehicle_type = COALESCE(NULLIF(?, ''), vehicle_type),
+                vehicle_brand = COALESCE(NULLIF(?, ''), vehicle_brand),
+                vehicle_model = COALESCE(NULLIF(?, ''), vehicle_model),
+                vehicle_colour = COALESCE(NULLIF(?, ''), vehicle_colour),
+                vehicle_reg_number = COALESCE(NULLIF(?, ''), vehicle_reg_number),
+                cnic_front_url = CASE WHEN ? <> '' THEN ? ELSE cnic_front_url END,
+                cnic_back_url = CASE WHEN ? <> '' THEN ? ELSE cnic_back_url END,
+                licence_doc_url = CASE WHEN ? <> '' THEN ? ELSE licence_doc_url END,
+                registration_doc_url = CASE WHEN ? <> '' THEN ? ELSE registration_doc_url END
+               WHERE id = ?`
+            ).bind(
+              body.cnic || '',
+              body.driving_licence || '',
+              body.service_type_id || body.vehicle_type || '',
+              body.vehicle_brand || '',
+              body.vehicle_model || '',
+              body.vehicle_colour || body.vehicle_color || '',
+              body.registration_number || body.vehicle_reg_number || '',
+              body.cnic_front_url || '', body.cnic_front_url || '',
+              body.cnic_back_url || '', body.cnic_back_url || '',
+              body.licence_doc_url || '', body.licence_doc_url || '',
+              body.registration_doc_url || '', body.registration_doc_url || '',
+              driverId
+            ).catch((e) => console.error('Error updating driver profile:', e));
+          } else {
+            // Create new driver profile
+            driverId = generateId('drv');
+            await env.DB.prepare(
+              `INSERT INTO drivers (
+                id, user_id, cnic, driving_licence, vehicle_type, vehicle_brand, vehicle_model,
+                vehicle_colour, vehicle_reg_number, is_approved, is_online, is_available,
+                cnic_front_url, cnic_back_url, licence_doc_url, registration_doc_url
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 1, ?, ?, ?, ?)`
+            ).bind(
+              driverId,
+              user.id,
+              body.cnic || '35202-0000000-0',
+              body.driving_licence || 'LIC-00000',
+              body.service_type_id || body.vehicle_type || 'Car',
+              body.vehicle_brand || 'Suzuki',
+              body.vehicle_model || 'Alto',
+              body.vehicle_colour || body.vehicle_color || 'White',
+              body.registration_number || body.vehicle_reg_number || 'REG-1234',
+              body.cnic_front_url || '',
+              body.cnic_back_url || '',
+              body.licence_doc_url || '',
+              body.registration_doc_url || ''
+            ).catch((e) => console.error('Error inserting driver profile:', e));
+          }
+
+          // Store document records in driver_documents table
+          const docsToStore = [
+            { type: 'cnic_front', url: body.cnic_front_url },
+            { type: 'cnic_back', url: body.cnic_back_url },
+            { type: 'licence', url: body.licence_doc_url },
+            { type: 'registration', url: body.registration_doc_url },
+          ];
+
+          for (const doc of docsToStore) {
+            if (doc.url) {
+              const docId = generateId('doc');
+              const fileKey = doc.url.includes('/uploads/') ? doc.url.substring(doc.url.indexOf('/uploads/') + 1) : `documents/${docId}.jpg`;
+              await env.DB.prepare(
+                `INSERT INTO driver_documents (id, driver_id, doc_type, file_key, file_url, original_filename, content_type, size)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+              ).bind(docId, driverId, doc.type, fileKey, doc.url, `${doc.type}.jpg`, 'image/jpeg', 0).catch(() => {});
+            }
+          }
+
+          return json({ success: true, message: 'Driver registration submitted for admin approval', driver_id: driverId });
         }
 
-        return json({ success: true, message: 'Driver registration submitted for admin approval', driver_id: driverId });
+        return json({ success: true, message: 'Driver registration submitted for admin approval', driver_id: generateId('drv') });
+      }
+
+      if (path.startsWith('/api/drivers/') && path.endsWith('/documents') && method === 'GET') {
+        const parts = path.split('/');
+        const reqDriverId = parts[3];
+        let docs: any[] = [];
+        if (env.DB && reqDriverId) {
+          const res = await env.DB.prepare(`SELECT * FROM driver_documents WHERE driver_id = ? ORDER BY created_at DESC`).bind(reqDriverId).all();
+          docs = res.results || [];
+        }
+        return json({ documents: docs });
       }
 
       if (path === '/api/drivers/me') {
@@ -1092,36 +1176,110 @@ export default {
       }
 
       // ==========================================
-      // UPLOAD ENDPOINT (Cloudflare R2 Bucket Proxy)
+      // UPLOAD ENDPOINT (Cloudflare R2 Bucket Proxy & D1 Document Tracking)
       // ==========================================
       if (path === '/api/upload' && method === 'POST') {
         try {
           const contentType = request.headers.get('content-type') || '';
           let fileData: ArrayBuffer | null = null;
-          let filename = `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}.jpg`;
+          let fileObj: File | null = null;
+          let docType = 'document';
+          let reqDriverId = '';
 
           if (contentType.includes('multipart/form-data')) {
             const formData = await request.formData();
-            const file = formData.get('file') as File | null;
-            if (file) {
-              fileData = await file.arrayBuffer();
-              filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            fileObj = (formData.get('file') || formData.get('document')) as File | null;
+            if (fileObj) {
+              fileData = await fileObj.arrayBuffer();
             }
+            docType = (formData.get('doc_type') || formData.get('docType') || 'document') as string;
+            reqDriverId = (formData.get('driver_id') || formData.get('driverId') || '') as string;
           } else {
             fileData = await request.arrayBuffer();
           }
 
-          if (env.BUCKET && fileData) {
-            const key = `uploads/${filename}`;
-            await env.BUCKET.put(key, fileData);
-            const publicUrl = `/uploads/${filename}`;
-            return json({ success: true, url: publicUrl, filename });
+          if (!fileData || fileData.byteLength === 0) {
+            return json({ error: 'No file content uploaded' }, 400);
           }
 
-          // Fallback if no R2 bucket bound
-          const fallbackUrl = `/uploads/${filename}`;
-          return json({ success: true, url: fallbackUrl, filename });
+          // Generate UUID + extension for unique object key
+          const uuid = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+          let ext = 'jpg';
+          if (fileObj && fileObj.name && fileObj.name.includes('.')) {
+            ext = fileObj.name.split('.').pop() || 'jpg';
+          }
+          const filename = `${uuid}.${ext}`;
+          const objectKey = `documents/${filename}`;
+          const publicUrl = `/uploads/${filename}`;
+
+          // R2 Bucket upload: Check env.R2_Bucket, env.R2_BUCKET, env.BUCKET, named bindings, or find any R2 binding dynamically
+          let r2Bucket = (env as any).R2_Bucket || (env as any).R2_BUCKET || (env as any).BUCKET || (env as any)['apnicar-documents'] || (env as any).apnicar_documents || null;
+          if (!r2Bucket && env) {
+            for (const key of Object.keys(env)) {
+              const val = (env as any)[key];
+              if (val && typeof val === 'object' && typeof val.put === 'function' && typeof val.get === 'function') {
+                r2Bucket = val;
+                break;
+              }
+            }
+          }
+          if (r2Bucket) {
+            await r2Bucket.put(objectKey, fileData, {
+              httpMetadata: { contentType: fileObj ? fileObj.type : 'image/jpeg' },
+            });
+          }
+
+          // Identify user / driver for metadata persistence in D1
+          let targetDriverId = reqDriverId;
+          const user = await authenticateUser(request, env);
+          if (!targetDriverId && user && env.DB) {
+            const drv = await env.DB.prepare(`SELECT id FROM drivers WHERE user_id = ? LIMIT 1`).bind(user.id).first();
+            if (drv && drv.id) {
+              targetDriverId = drv.id as string;
+            }
+          }
+
+          let docId = generateId('doc');
+          if (env.DB && targetDriverId) {
+            await env.DB.prepare(
+              `INSERT INTO driver_documents (id, driver_id, doc_type, file_key, file_url, original_filename, content_type, size)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+            ).bind(
+              docId,
+              targetDriverId,
+              docType,
+              objectKey,
+              publicUrl,
+              fileObj ? fileObj.name : filename,
+              fileObj ? fileObj.type : 'image/jpeg',
+              fileData.byteLength
+            ).catch((e) => console.error('Error inserting driver_document:', e));
+
+            // Also update main driver document URL column if applicable
+            const colMap: Record<string, string> = {
+              cnic_front: 'cnic_front_url',
+              cnic_back: 'cnic_back_url',
+              licence: 'licence_doc_url',
+              registration: 'registration_doc_url',
+            };
+            if (colMap[docType]) {
+              await env.DB.prepare(`UPDATE drivers SET ${colMap[docType]} = ? WHERE id = ?`)
+                .bind(publicUrl, targetDriverId)
+                .catch(() => {});
+            }
+          }
+
+          return json({
+            success: true,
+            url: publicUrl,
+            file_key: objectKey,
+            filename,
+            doc_id: docId,
+            driver_id: targetDriverId || null,
+            doc_type: docType,
+          });
         } catch (err: any) {
+          console.error('Upload endpoint error:', err);
           return json({ error: err.message || 'File upload failed' }, 500);
         }
       }

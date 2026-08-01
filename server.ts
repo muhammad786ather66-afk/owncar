@@ -41,13 +41,16 @@ interface DbState {
   notifications: any[];
   cities: any[];
   tokens: any[];
+  driver_documents?: any[];
 }
 
 function loadDb(): DbState {
   if (fs.existsSync(dbPath)) {
     try {
       const data = fs.readFileSync(dbPath, 'utf-8');
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      if (!parsed.driver_documents) parsed.driver_documents = [];
+      return parsed;
     } catch (e) {
       console.error('Failed to parse db, resetting', e);
     }
@@ -421,6 +424,103 @@ app.post('/api/auth/register-driver', (req, res) => {
   }
 });
 
+// Auth: Driver Registration via /api/drivers/register
+app.post('/api/drivers/register', (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: 'Authentication required' });
+    const token = authHeader.replace('Bearer ', '');
+    db = loadDb();
+    const tokenObj = db.tokens.find((t) => t.token === token);
+    const user = tokenObj ? db.users.find((u) => u.email === tokenObj.email) : db.users.find((u) => token.includes(u.id));
+    if (!user) return res.status(401).json({ error: 'User not found' });
+
+    user.role = 'driver';
+    const body = req.body || {};
+
+    const existingDriver = db.drivers.find((d) => d.user_id === user.id);
+    const driverId = existingDriver ? existingDriver.id : 'drv-' + Date.now();
+
+    if (existingDriver) {
+      if (body.cnic) existingDriver.cnic = body.cnic;
+      if (body.driving_licence) existingDriver.driving_licence = body.driving_licence;
+      if (body.service_type_id || body.vehicle_type) existingDriver.vehicle_type = body.service_type_id || body.vehicle_type;
+      if (body.vehicle_brand) existingDriver.vehicle_brand = body.vehicle_brand;
+      if (body.vehicle_model) existingDriver.vehicle_model = body.vehicle_model;
+      if (body.vehicle_colour || body.vehicle_color) existingDriver.vehicle_colour = body.vehicle_colour || body.vehicle_color;
+      if (body.registration_number || body.vehicle_reg_number) existingDriver.vehicle_reg_number = body.registration_number || body.vehicle_reg_number;
+      if (body.cnic_front_url) existingDriver.cnic_front_url = body.cnic_front_url;
+      if (body.cnic_back_url) existingDriver.cnic_back_url = body.cnic_back_url;
+      if (body.licence_doc_url) existingDriver.licence_doc_url = body.licence_doc_url;
+      if (body.registration_doc_url) existingDriver.registration_doc_url = body.registration_doc_url;
+    } else {
+      const newDriver = {
+        id: driverId,
+        user_id: user.id,
+        cnic: body.cnic || '35202-0000000-0',
+        driving_licence: body.driving_licence || 'LIC-00000',
+        vehicle_type: body.service_type_id || body.vehicle_type || 'Car',
+        vehicle_brand: body.vehicle_brand || 'Suzuki',
+        vehicle_model: body.vehicle_model || 'Alto',
+        vehicle_colour: body.vehicle_colour || body.vehicle_color || 'White',
+        vehicle_reg_number: body.registration_number || body.vehicle_reg_number || 'REG-1234',
+        is_approved: 0,
+        cnic_front_url: body.cnic_front_url || '',
+        cnic_back_url: body.cnic_back_url || '',
+        licence_doc_url: body.licence_doc_url || '',
+        registration_doc_url: body.registration_doc_url || '',
+        is_online: 0,
+        current_lat: 31.5204,
+        current_lng: 74.3587,
+        rating: 5.0,
+        total_rides: 0,
+      };
+      db.drivers.push(newDriver);
+    }
+
+    if (!db.driver_documents) db.driver_documents = [];
+    const docsToStore = [
+      { type: 'cnic_front', url: body.cnic_front_url },
+      { type: 'cnic_back', url: body.cnic_back_url },
+      { type: 'licence', url: body.licence_doc_url },
+      { type: 'registration', url: body.registration_doc_url },
+    ];
+
+    for (const doc of docsToStore) {
+      if (doc.url) {
+        const docId = `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        const fileKey = doc.url.includes('/uploads/') ? doc.url.substring(doc.url.indexOf('/uploads/') + 1) : `documents/${docId}.jpg`;
+        db.driver_documents.push({
+          id: docId,
+          driver_id: driverId,
+          doc_type: doc.type,
+          file_key: fileKey,
+          file_url: doc.url,
+          original_filename: `${doc.type}.jpg`,
+          content_type: 'image/jpeg',
+          size: 0,
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
+    saveDb(db);
+    return res.json({ success: true, message: 'Driver registration submitted for admin approval', driver_id: driverId });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/drivers/:id/documents', (req, res) => {
+  try {
+    const driverId = req.params.id;
+    db = loadDb();
+    const docs = (db.driver_documents || []).filter((d) => d.driver_id === driverId);
+    return res.json({ documents: docs });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // Auth: Email Verification
 app.post('/api/auth/verify-email', (req, res) => {
   try {
@@ -597,11 +697,61 @@ app.post('/api/upload', upload.single('file'), (req: Request, res: Response) => 
       return res.status(400).json({ error: 'No file uploaded' });
     }
     const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    const docType = (req.body?.doc_type || req.body?.docType || 'document') as string;
+    const reqDriverId = (req.body?.driver_id || req.body?.driverId || '') as string;
+
+    db = loadDb();
+    if (!db.driver_documents) db.driver_documents = [];
+
+    let targetDriverId = reqDriverId;
+    const authHeader = req.headers.authorization;
+    if (!targetDriverId && authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const tokenObj = db.tokens.find((t) => t.token === token);
+      if (tokenObj) {
+        const u = db.users.find((user) => user.email === tokenObj.email);
+        if (u) {
+          const drv = db.drivers.find((d) => d.user_id === u.id);
+          if (drv) targetDriverId = drv.id;
+        }
+      }
+    }
+
+    const docId = `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const objectKey = `documents/${req.file.filename}`;
+
+    if (targetDriverId) {
+      const docRecord = {
+        id: docId,
+        driver_id: targetDriverId,
+        doc_type: docType,
+        file_key: objectKey,
+        file_url: fileUrl,
+        original_filename: req.file.originalname || req.file.filename,
+        content_type: req.file.mimetype || 'image/jpeg',
+        size: req.file.size || 0,
+        created_at: new Date().toISOString(),
+      };
+      db.driver_documents.push(docRecord);
+
+      const drv = db.drivers.find((d) => d.id === targetDriverId);
+      if (drv) {
+        if (docType === 'cnic_front') drv.cnic_front_url = fileUrl;
+        if (docType === 'cnic_back') drv.cnic_back_url = fileUrl;
+        if (docType === 'licence') drv.licence_doc_url = fileUrl;
+        if (docType === 'registration') drv.registration_doc_url = fileUrl;
+      }
+      saveDb(db);
+    }
+
     return res.json({
       success: true,
       url: fileUrl,
-      bucket: 'apnicar-documents',
+      file_key: objectKey,
       filename: req.file.filename,
+      doc_id: docId,
+      driver_id: targetDriverId || null,
+      doc_type: docType,
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
