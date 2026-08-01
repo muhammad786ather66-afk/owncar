@@ -112,12 +112,14 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_driver ON subscriptions(driver_id);
 CREATE TABLE IF NOT EXISTS driver_documents (
     id TEXT PRIMARY KEY,
     driver_id TEXT NOT NULL,
-    doc_type TEXT NOT NULL,
-    file_key TEXT NOT NULL,
-    file_url TEXT NOT NULL,
-    original_filename TEXT,
-    content_type TEXT,
-    size INTEGER,
+    document_type TEXT NOT NULL,
+    document_url TEXT,
+    document_hash TEXT,
+    verification_status TEXT NOT NULL DEFAULT 'pending',
+    rejection_reason TEXT,
+    verified_by TEXT,
+    verified_at DATETIME,
+    expires_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(driver_id) REFERENCES drivers(id) ON DELETE CASCADE
 );

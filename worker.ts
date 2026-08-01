@@ -119,6 +119,39 @@ async function verifyPassword(password: string, storedHash: string): Promise<boo
   }
 }
 
+// Helper: Save driver document record to D1 (supports Cloudflare D1 schema & custom schema)
+async function saveDriverDocToD1(
+  env: Env,
+  docId: string,
+  driverId: string,
+  docType: string,
+  fileKey: string,
+  fileUrl: string,
+  filename: string,
+  contentType: string,
+  size: number
+) {
+  if (!env.DB || !driverId) return;
+  // Try Cloudflare D1 schema first (document_type, document_url, verification_status)
+  try {
+    await env.DB.prepare(
+      `INSERT INTO driver_documents (id, driver_id, document_type, document_url, verification_status)
+       VALUES (?, ?, ?, ?, 'pending')`
+    ).bind(docId, driverId, docType, fileUrl).run();
+    return;
+  } catch (err) {
+    // Fallback to custom schema (doc_type, file_key, file_url, original_filename, content_type, size)
+    try {
+      await env.DB.prepare(
+        `INSERT INTO driver_documents (id, driver_id, doc_type, file_key, file_url, original_filename, content_type, size)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(docId, driverId, docType, fileKey, fileUrl, filename, contentType, size).run();
+    } catch (e) {
+      console.error('Failed to insert driver document into D1:', e);
+    }
+  }
+}
+
 // Helper: Extract Bearer Token
 function getBearerToken(request: Request): string | null {
   const auth = request.headers.get('Authorization');
@@ -258,12 +291,12 @@ export default {
           CREATE TABLE IF NOT EXISTS driver_documents (
             id TEXT PRIMARY KEY,
             driver_id TEXT NOT NULL,
-            doc_type TEXT NOT NULL,
-            file_key TEXT NOT NULL,
-            file_url TEXT NOT NULL,
-            original_filename TEXT,
-            content_type TEXT,
-            size INTEGER,
+            document_type TEXT,
+            document_url TEXT,
+            doc_type TEXT,
+            file_key TEXT,
+            file_url TEXT,
+            verification_status TEXT DEFAULT 'pending',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(driver_id) REFERENCES drivers(id) ON DELETE CASCADE
           );
@@ -498,10 +531,7 @@ export default {
             if (doc.url) {
               const docId = generateId('doc');
               const fileKey = doc.url.includes('/uploads/') ? doc.url.substring(doc.url.indexOf('/uploads/') + 1) : `documents/${docId}.jpg`;
-              await env.DB.prepare(
-                `INSERT INTO driver_documents (id, driver_id, doc_type, file_key, file_url, original_filename, content_type, size)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-              ).bind(docId, driverId, doc.type, fileKey, doc.url, `${doc.type}.jpg`, 'image/jpeg', 0).catch(() => {});
+              await saveDriverDocToD1(env, docId, driverId, doc.type, fileKey, doc.url, `${doc.type}.jpg`, 'image/jpeg', 0);
             }
           }
 
@@ -517,7 +547,12 @@ export default {
         let docs: any[] = [];
         if (env.DB && reqDriverId) {
           const res = await env.DB.prepare(`SELECT * FROM driver_documents WHERE driver_id = ? ORDER BY created_at DESC`).bind(reqDriverId).all();
-          docs = res.results || [];
+          docs = (res.results || []).map((d: any) => ({
+            ...d,
+            doc_type: d.doc_type || d.document_type || 'document',
+            file_url: d.file_url || d.document_url || '',
+            file_key: d.file_key || d.document_url || '',
+          }));
         }
         return json({ documents: docs });
       }
@@ -1241,10 +1276,8 @@ export default {
 
           let docId = generateId('doc');
           if (env.DB && targetDriverId) {
-            await env.DB.prepare(
-              `INSERT INTO driver_documents (id, driver_id, doc_type, file_key, file_url, original_filename, content_type, size)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-            ).bind(
+            await saveDriverDocToD1(
+              env,
               docId,
               targetDriverId,
               docType,
@@ -1253,7 +1286,7 @@ export default {
               fileObj ? fileObj.name : filename,
               fileObj ? fileObj.type : 'image/jpeg',
               fileData.byteLength
-            ).catch((e) => console.error('Error inserting driver_document:', e));
+            );
 
             // Also update main driver document URL column if applicable
             const colMap: Record<string, string> = {
