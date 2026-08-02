@@ -151,6 +151,16 @@ function formatLicenceOrReg(val: string): string {
   return str;
 }
 
+function arrayBufferToBase64(buffer: ArrayBuffer, mimeType: string = 'image/jpeg'): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return `data:${mimeType};base64,${btoa(binary)}`;
+}
+
 // Helper: Save driver document record to D1 (supports Cloudflare D1 schema & custom schema)
 async function saveDriverDocToD1(
   env: Env,
@@ -598,6 +608,10 @@ export default {
           ];
 
           const r2Bucket = getR2Bucket(env);
+          let updatedFront = body.cnic_front_url || '';
+          let updatedBack = body.cnic_back_url || '';
+          let updatedLicence = body.licence_doc_url || '';
+          let updatedReg = body.registration_doc_url || '';
 
           for (const doc of docsToStore) {
             if (doc.url) {
@@ -606,34 +620,45 @@ export default {
               let fileKey = `drivers/${driverId}/${doc.type}_${uuid}.jpg`;
 
               if (doc.url.startsWith('data:image')) {
-                // Base64 upload to Cloudflare R2
-                try {
-                  const base64Data = doc.url.split(',')[1];
-                  const binaryStr = atob(base64Data);
-                  const len = binaryStr.length;
-                  const bytes = new Uint8Array(len);
-                  for (let i = 0; i < len; i++) {
-                    bytes[i] = binaryStr.charCodeAt(i);
-                  }
-                  finalUrl = `/uploads/${uuid}.jpg`;
-
-                  if (r2Bucket) {
+                // Keep Base64 as finalUrl by default for 100% reliable D1 storage
+                finalUrl = doc.url;
+                if (r2Bucket) {
+                  try {
+                    const base64Data = doc.url.split(',')[1];
+                    const binaryStr = atob(base64Data);
+                    const len = binaryStr.length;
+                    const bytes = new Uint8Array(len);
+                    for (let i = 0; i < len; i++) {
+                      bytes[i] = binaryStr.charCodeAt(i);
+                    }
                     await r2Bucket.put(fileKey, bytes.buffer, {
                       httpMetadata: { contentType: 'image/jpeg' },
                     });
                     console.log(`[R2 Base64 Upload Success] Key: '${fileKey}', Driver: '${driverId}'`);
+                  } catch (b64Err) {
+                    console.error('[Base64 Upload Error]', b64Err);
                   }
-                } catch (b64Err) {
-                  console.error('[Base64 Upload Error]', b64Err);
                 }
               } else if (doc.url.includes('/uploads/')) {
                 const fname = doc.url.substring(doc.url.lastIndexOf('/') + 1);
                 fileKey = `drivers/${driverId}/${doc.type}_${fname}`;
               }
 
+              if (doc.type === 'cnic_front') updatedFront = finalUrl;
+              if (doc.type === 'cnic_back') updatedBack = finalUrl;
+              if (doc.type === 'licence') updatedLicence = finalUrl;
+              if (doc.type === 'registration') updatedReg = finalUrl;
+
               const docId = generateId('doc');
               await saveDriverDocToD1(env, docId, driverId, doc.type, fileKey, finalUrl, `${doc.type}.jpg`, 'image/jpeg', 0);
             }
+          }
+
+          // Ensure drivers profile columns are synced with the saved document URLs/Base64
+          if (env.DB && driverId) {
+            await env.DB.prepare(
+              `UPDATE drivers SET cnic_front_url = ?, cnic_back_url = ?, licence_doc_url = ?, registration_doc_url = ? WHERE id = ?`
+            ).bind(updatedFront, updatedBack, updatedLicence, updatedReg, driverId).run().catch(() => {});
           }
 
           return json({ success: true, message: 'Driver registration submitted for admin approval', driver_id: driverId });
@@ -654,6 +679,17 @@ export default {
             file_url: d.file_url || d.document_url || '',
             file_key: d.file_key || d.document_url || '',
           }));
+
+          // Fallback: If driver_documents table is empty, construct doc list from drivers profile columns
+          if (docs.length === 0) {
+            const drv: any = await env.DB.prepare(`SELECT * FROM drivers WHERE id = ? LIMIT 1`).bind(reqDriverId).first();
+            if (drv) {
+              if (drv.cnic_front_url) docs.push({ id: `doc_cf_${drv.id}`, driver_id: drv.id, doc_type: 'cnic_front', document_type: 'cnic_front', file_url: drv.cnic_front_url, document_url: drv.cnic_front_url, file_key: drv.cnic_front_url, verification_status: 'pending' });
+              if (drv.cnic_back_url) docs.push({ id: `doc_cb_${drv.id}`, driver_id: drv.id, doc_type: 'cnic_back', document_type: 'cnic_back', file_url: drv.cnic_back_url, document_url: drv.cnic_back_url, file_key: drv.cnic_back_url, verification_status: 'pending' });
+              if (drv.licence_doc_url) docs.push({ id: `doc_lic_${drv.id}`, driver_id: drv.id, doc_type: 'licence', document_type: 'licence', file_url: drv.licence_doc_url, document_url: drv.licence_doc_url, file_key: drv.licence_doc_url, verification_status: 'pending' });
+              if (drv.registration_doc_url) docs.push({ id: `doc_reg_${drv.id}`, driver_id: drv.id, doc_type: 'registration', document_type: 'registration', file_url: drv.registration_doc_url, document_url: drv.registration_doc_url, file_key: drv.registration_doc_url, verification_status: 'pending' });
+            }
+          }
         }
         return json({ documents: docs });
       }
@@ -1381,8 +1417,71 @@ export default {
       }
 
       // ==========================================
-      // UPLOAD ENDPOINT (Cloudflare R2 Bucket Proxy & D1 Document Tracking)
+      // UPLOAD & FILE SERVING ENDPOINTS (Cloudflare R2 Bucket Proxy & D1 Base64 Storage)
       // ==========================================
+      if (path.startsWith('/uploads/') && method === 'GET') {
+        const filename = path.replace('/uploads/', '');
+
+        // 1. Try Cloudflare R2 Bucket if bound
+        const r2Bucket = getR2Bucket(env);
+        if (r2Bucket && filename) {
+          try {
+            let obj = await r2Bucket.get(filename).catch(() => null);
+            if (!obj) {
+              const list = await r2Bucket.list({ prefix: '' }).catch(() => null);
+              const matching = (list?.objects || []).find((o: any) => o.key.includes(filename));
+              if (matching) {
+                obj = await r2Bucket.get(matching.key).catch(() => null);
+              }
+            }
+            if (obj && obj.body) {
+              const contentType = obj.httpMetadata?.contentType || 'image/jpeg';
+              return new Response(obj.body, {
+                headers: { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=86400' }
+              });
+            }
+          } catch (r2Err) {
+            console.warn('[GET /uploads R2 Error]', r2Err);
+          }
+        }
+
+        // 2. Fallback to D1 Database Base64 storage lookup
+        if (env.DB && filename) {
+          try {
+            const docRecord: any = await env.DB.prepare(
+              `SELECT file_url, document_url FROM driver_documents 
+               WHERE file_key LIKE ? OR file_url LIKE ? OR original_filename = ? OR id = ?
+               LIMIT 1`
+            ).bind(`%${filename}%`, `%${filename}%`, filename, filename).first();
+
+            const urlVal = docRecord?.file_url || docRecord?.document_url;
+            if (urlVal && urlVal.startsWith('data:')) {
+              const parts = urlVal.split(',');
+              const mimeMatch = parts[0].match(/data:(.*?);base64/);
+              const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+              const base64Data = parts[1];
+              const binaryStr = atob(base64Data);
+              const len = binaryStr.length;
+              const bytes = new Uint8Array(len);
+              for (let i = 0; i < len; i++) {
+                bytes[i] = binaryStr.charCodeAt(i);
+              }
+              return new Response(bytes.buffer, {
+                headers: { 'Content-Type': mimeType, 'Cache-Control': 'public, max-age=86400' }
+              });
+            }
+          } catch (d1Err) {
+            console.warn('[GET /uploads D1 Error]', d1Err);
+          }
+        }
+
+        // 3. Fallback: Return clean SVG image graphic
+        const svgPlaceholder = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect width="100%" height="100%" fill="#f3f4f6"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#9ca3af" font-family="sans-serif" font-size="14">Document Image</text></svg>`;
+        return new Response(svgPlaceholder, {
+          headers: { 'Content-Type': 'image/svg+xml' }
+        });
+      }
+
       if (path === '/api/upload' && method === 'POST') {
         try {
           const contentType = request.headers.get('content-type') || '';
@@ -1418,7 +1517,7 @@ export default {
 
           const r2Bucket = getR2Bucket(env);
           if (!r2Bucket) {
-            console.warn('[Upload API Warning] Cloudflare R2 Bucket binding (R2_Bucket) is not bound or missing in environment');
+            console.warn('[Upload API Warning] Cloudflare R2 Bucket binding (R2_Bucket) is not bound or missing in environment. Using D1 Base64 storage.');
           }
 
           // Identify driver if user is logged in
@@ -1445,15 +1544,20 @@ export default {
 
             const filename = `${uuid}.${ext}`;
             const objectKey = targetDriverId ? `drivers/${targetDriverId}/${docType}_${filename}` : `documents/${filename}`;
-            const publicUrl = `/uploads/${filename}`;
+            const b64DataUrl = arrayBufferToBase64(fileData, file.type || 'image/jpeg');
 
-            console.log(`[R2 Uploading] File: '${file.name}', Size: ${fileData.byteLength} bytes, MIME: ${file.type || 'image/jpeg'}, Target ObjectKey: '${objectKey}'`);
+            let publicUrl = b64DataUrl; // Default to Base64 data URL for 100% reliable rendering
 
             if (r2Bucket) {
-              await r2Bucket.put(objectKey, fileData, {
-                httpMetadata: { contentType: file.type || 'image/jpeg' },
-              });
-              console.log(`[R2 Upload Success] Saved '${file.name}' to R2 with key '${objectKey}'`);
+              try {
+                await r2Bucket.put(objectKey, fileData, {
+                  httpMetadata: { contentType: file.type || 'image/jpeg' },
+                });
+                publicUrl = `/uploads/${filename}`;
+                console.log(`[R2 Upload Success] Saved '${file.name}' to R2 with key '${objectKey}'`);
+              } catch (r2Err) {
+                console.error('[R2 Put Error - Falling back to Base64 Data URL]', r2Err);
+              }
             }
 
             const docId = generateId('doc');
@@ -1464,7 +1568,7 @@ export default {
                 targetDriverId,
                 docType,
                 objectKey,
-                publicUrl,
+                b64DataUrl, // Save complete Base64 data URL in D1 database
                 file.name || filename,
                 file.type || 'image/jpeg',
                 fileData.byteLength
@@ -1481,7 +1585,7 @@ export default {
               };
               if (colMap[docType]) {
                 await env.DB.prepare(`UPDATE drivers SET ${colMap[docType]} = ? WHERE id = ?`)
-                  .bind(publicUrl, targetDriverId)
+                  .bind(b64DataUrl, targetDriverId)
                   .run()
                   .catch(() => {});
               }
@@ -1491,6 +1595,7 @@ export default {
               doc_id: docId,
               file_key: objectKey,
               url: publicUrl,
+              data_url: b64DataUrl,
               filename,
               original_name: file.name,
               size: fileData.byteLength,
@@ -1503,6 +1608,7 @@ export default {
           return json({
             success: true,
             url: primary.url,
+            data_url: primary.data_url,
             file_key: primary.file_key,
             filename: primary.filename,
             doc_id: primary.doc_id,
