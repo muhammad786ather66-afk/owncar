@@ -5,8 +5,29 @@
 
 export interface Env {
   DB: any; // Cloudflare D1 binding
-  BUCKET: any; // Cloudflare R2 binding
+  R2_Bucket?: any; // Cloudflare R2 binding
+  R2_BUCKET?: any;
+  BUCKET?: any; // Cloudflare R2 binding
   JWT_SECRET: string;
+}
+
+// Utility: Helper to obtain the R2 Bucket binding
+function getR2Bucket(env: any): any {
+  if (!env) return null;
+  if (env.R2_Bucket && typeof env.R2_Bucket.put === 'function') return env.R2_Bucket;
+  if (env.R2_BUCKET && typeof env.R2_BUCKET.put === 'function') return env.R2_BUCKET;
+  if (env.BUCKET && typeof env.BUCKET.put === 'function') return env.BUCKET;
+  if (env['apnicar-documents'] && typeof env['apnicar-documents'].put === 'function') return env['apnicar-documents'];
+  if (env.apnicar_documents && typeof env.apnicar_documents.put === 'function') return env.apnicar_documents;
+  if (env.MY_BUCKET && typeof env.MY_BUCKET.put === 'function') return env.MY_BUCKET;
+
+  for (const key of Object.keys(env)) {
+    const val = env[key];
+    if (val && typeof val === 'object' && typeof val.put === 'function' && typeof val.get === 'function') {
+      return val;
+    }
+  }
+  return null;
 }
 
 // Utility: Haversine distance in KM
@@ -519,7 +540,7 @@ export default {
             ).catch((e) => console.error('Error inserting driver profile:', e));
           }
 
-          // Store document records in driver_documents table
+          // Store document records in driver_documents table and Cloudflare R2
           const docsToStore = [
             { type: 'cnic_front', url: body.cnic_front_url },
             { type: 'cnic_back', url: body.cnic_back_url },
@@ -527,11 +548,42 @@ export default {
             { type: 'registration', url: body.registration_doc_url },
           ];
 
+          const r2Bucket = getR2Bucket(env);
+
           for (const doc of docsToStore) {
             if (doc.url) {
+              let finalUrl = doc.url;
+              const uuid = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+              let fileKey = `drivers/${driverId}/${doc.type}_${uuid}.jpg`;
+
+              if (doc.url.startsWith('data:image')) {
+                // Base64 upload to Cloudflare R2
+                try {
+                  const base64Data = doc.url.split(',')[1];
+                  const binaryStr = atob(base64Data);
+                  const len = binaryStr.length;
+                  const bytes = new Uint8Array(len);
+                  for (let i = 0; i < len; i++) {
+                    bytes[i] = binaryStr.charCodeAt(i);
+                  }
+                  finalUrl = `/uploads/${uuid}.jpg`;
+
+                  if (r2Bucket) {
+                    await r2Bucket.put(fileKey, bytes.buffer, {
+                      httpMetadata: { contentType: 'image/jpeg' },
+                    });
+                    console.log(`[R2 Base64 Upload Success] Key: '${fileKey}', Driver: '${driverId}'`);
+                  }
+                } catch (b64Err) {
+                  console.error('[Base64 Upload Error]', b64Err);
+                }
+              } else if (doc.url.includes('/uploads/')) {
+                const fname = doc.url.substring(doc.url.lastIndexOf('/') + 1);
+                fileKey = `drivers/${driverId}/${doc.type}_${fname}`;
+              }
+
               const docId = generateId('doc');
-              const fileKey = doc.url.includes('/uploads/') ? doc.url.substring(doc.url.indexOf('/uploads/') + 1) : `documents/${docId}.jpg`;
-              await saveDriverDocToD1(env, docId, driverId, doc.type, fileKey, doc.url, `${doc.type}.jpg`, 'image/jpeg', 0);
+              await saveDriverDocToD1(env, docId, driverId, doc.type, fileKey, finalUrl, `${doc.type}.jpg`, 'image/jpeg', 0);
             }
           }
 
@@ -1211,60 +1263,116 @@ export default {
       }
 
       // ==========================================
+      // DEBUG ENDPOINTS (Tasks 12 & 13)
+      // ==========================================
+      if (path === '/api/debug/upload' && method === 'GET') {
+        const r2Bucket = getR2Bucket(env);
+        let r2BindingExists = !!r2Bucket;
+        let canWriteR2 = false;
+        let driverDocumentsTableExists = false;
+        let r2Error: string | null = null;
+        let d1Error: string | null = null;
+
+        if (r2Bucket) {
+          try {
+            const testKey = `debug/health-test-${Date.now()}.txt`;
+            await r2Bucket.put(testKey, 'ok', { httpMetadata: { contentType: 'text/plain' } });
+            canWriteR2 = true;
+            if (typeof r2Bucket.delete === 'function') {
+              await r2Bucket.delete(testKey).catch(() => {});
+            }
+          } catch (err: any) {
+            r2Error = err.message || String(err);
+            console.error('[Debug Upload] R2 Write Test Error:', err);
+          }
+        }
+
+        if (env.DB) {
+          try {
+            const res = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM driver_documents`).first();
+            driverDocumentsTableExists = res !== null && res !== undefined;
+          } catch (err: any) {
+            d1Error = err.message || String(err);
+            console.error('[Debug Upload] D1 Table Query Error:', err);
+          }
+        }
+
+        return json({
+          r2BindingExists,
+          canWriteR2,
+          driverDocumentsTableExists,
+          r2Error,
+          d1Error,
+          bindingName: r2Bucket ? 'R2_Bucket' : null,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      if (path === '/api/debug/documents' && method === 'GET') {
+        let docs: any[] = [];
+        let totalCount = 0;
+        if (env.DB) {
+          try {
+            const cntRes = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM driver_documents`).first();
+            totalCount = cntRes?.cnt ? Number(cntRes.cnt) : 0;
+            const res = await env.DB.prepare(
+              `SELECT * FROM driver_documents ORDER BY rowid DESC LIMIT 20`
+            ).all();
+            docs = res.results || [];
+          } catch (err: any) {
+            console.error('[Debug Documents] D1 Query Error:', err);
+          }
+        }
+        return json({
+          success: true,
+          total_count: totalCount,
+          count: docs.length,
+          documents: docs
+        });
+      }
+
+      // ==========================================
       // UPLOAD ENDPOINT (Cloudflare R2 Bucket Proxy & D1 Document Tracking)
       // ==========================================
       if (path === '/api/upload' && method === 'POST') {
         try {
           const contentType = request.headers.get('content-type') || '';
-          let fileData: ArrayBuffer | null = null;
-          let fileObj: File | null = null;
-          let docType = 'document';
+          console.log(`[Upload API] Received POST request with Content-Type: ${contentType}`);
+
+          const filesToProcess: { file: File; fieldName: string; docType: string }[] = [];
           let reqDriverId = '';
+          let globalDocType = '';
 
           if (contentType.includes('multipart/form-data')) {
             const formData = await request.formData();
-            fileObj = (formData.get('file') || formData.get('document')) as File | null;
-            if (fileObj) {
-              fileData = await fileObj.arrayBuffer();
-            }
-            docType = (formData.get('doc_type') || formData.get('docType') || 'document') as string;
+            globalDocType = (formData.get('doc_type') || formData.get('docType') || '') as string;
             reqDriverId = (formData.get('driver_id') || formData.get('driverId') || '') as string;
-          } else {
-            fileData = await request.arrayBuffer();
-          }
 
-          if (!fileData || fileData.byteLength === 0) {
-            return json({ error: 'No file content uploaded' }, 400);
-          }
-
-          // Generate UUID + extension for unique object key
-          const uuid = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-          let ext = 'jpg';
-          if (fileObj && fileObj.name && fileObj.name.includes('.')) {
-            ext = fileObj.name.split('.').pop() || 'jpg';
-          }
-          const filename = `${uuid}.${ext}`;
-          const objectKey = `documents/${filename}`;
-          const publicUrl = `/uploads/${filename}`;
-
-          // R2 Bucket upload: Check env.R2_Bucket, env.R2_BUCKET, env.BUCKET, named bindings, or find any R2 binding dynamically
-          let r2Bucket = (env as any).R2_Bucket || (env as any).R2_BUCKET || (env as any).BUCKET || (env as any)['apnicar-documents'] || (env as any).apnicar_documents || null;
-          if (!r2Bucket && env) {
-            for (const key of Object.keys(env)) {
-              const val = (env as any)[key];
-              if (val && typeof val === 'object' && typeof val.put === 'function' && typeof val.get === 'function') {
-                r2Bucket = val;
-                break;
+            for (const [key, value] of formData.entries()) {
+              if (value && typeof value === 'object' && typeof (value as any).arrayBuffer === 'function') {
+                const f = value as File;
+                if (f.size > 0) {
+                  let dt = globalDocType;
+                  if (!dt || dt === 'document') {
+                    dt = (key !== 'file' && key !== 'document') ? key : 'document';
+                  }
+                  filesToProcess.push({ file: f, fieldName: key, docType: dt });
+                }
               }
             }
           }
-          if (r2Bucket) {
-            await r2Bucket.put(objectKey, fileData, {
-              httpMetadata: { contentType: fileObj ? fileObj.type : 'image/jpeg' },
-            });
+
+          if (filesToProcess.length === 0) {
+            console.error('[Upload API Error] No valid non-empty files attached in FormData');
+            return json({ error: 'No valid file uploaded. Please attach a file in multipart/form-data' }, 400);
           }
 
-          // Identify user / driver for metadata persistence in D1
+          const r2Bucket = getR2Bucket(env);
+          if (!r2Bucket) {
+            console.warn('[Upload API Warning] Cloudflare R2 Bucket binding (R2_Bucket) is not bound or missing in environment');
+          }
+
+          // Identify driver if user is logged in
           let targetDriverId = reqDriverId;
           const user = await authenticateUser(request, env);
           if (!targetDriverId && user && env.DB) {
@@ -1274,45 +1382,86 @@ export default {
             }
           }
 
-          let docId = generateId('doc');
-          if (env.DB && targetDriverId) {
-            await saveDriverDocToD1(
-              env,
-              docId,
-              targetDriverId,
-              docType,
-              objectKey,
-              publicUrl,
-              fileObj ? fileObj.name : filename,
-              fileObj ? fileObj.type : 'image/jpeg',
-              fileData.byteLength
-            );
+          const uploadedResults: any[] = [];
 
-            // Also update main driver document URL column if applicable
-            const colMap: Record<string, string> = {
-              cnic_front: 'cnic_front_url',
-              cnic_back: 'cnic_back_url',
-              licence: 'licence_doc_url',
-              registration: 'registration_doc_url',
-            };
-            if (colMap[docType]) {
-              await env.DB.prepare(`UPDATE drivers SET ${colMap[docType]} = ? WHERE id = ?`)
-                .bind(publicUrl, targetDriverId)
-                .catch(() => {});
+          for (const item of filesToProcess) {
+            const { file, docType } = item;
+            const fileData = await file.arrayBuffer();
+            const uuid = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+            let ext = 'jpg';
+            if (file.name && file.name.includes('.')) {
+              ext = file.name.split('.').pop() || 'jpg';
             }
+
+            const filename = `${uuid}.${ext}`;
+            const objectKey = targetDriverId ? `drivers/${targetDriverId}/${docType}_${filename}` : `documents/${filename}`;
+            const publicUrl = `/uploads/${filename}`;
+
+            console.log(`[R2 Uploading] File: '${file.name}', Size: ${fileData.byteLength} bytes, MIME: ${file.type || 'image/jpeg'}, Target ObjectKey: '${objectKey}'`);
+
+            if (r2Bucket) {
+              await r2Bucket.put(objectKey, fileData, {
+                httpMetadata: { contentType: file.type || 'image/jpeg' },
+              });
+              console.log(`[R2 Upload Success] Saved '${file.name}' to R2 with key '${objectKey}'`);
+            }
+
+            const docId = generateId('doc');
+            if (env.DB && targetDriverId) {
+              await saveDriverDocToD1(
+                env,
+                docId,
+                targetDriverId,
+                docType,
+                objectKey,
+                publicUrl,
+                file.name || filename,
+                file.type || 'image/jpeg',
+                fileData.byteLength
+              );
+              console.log(`[D1 Insert Success] Inserted document row '${docId}' for driver '${targetDriverId}'`);
+
+              const colMap: Record<string, string> = {
+                cnic_front: 'cnic_front_url',
+                cnic_back: 'cnic_back_url',
+                licence: 'licence_doc_url',
+                licence_front: 'licence_doc_url',
+                registration: 'registration_doc_url',
+                reg: 'registration_doc_url',
+              };
+              if (colMap[docType]) {
+                await env.DB.prepare(`UPDATE drivers SET ${colMap[docType]} = ? WHERE id = ?`)
+                  .bind(publicUrl, targetDriverId)
+                  .catch(() => {});
+              }
+            }
+
+            uploadedResults.push({
+              doc_id: docId,
+              file_key: objectKey,
+              url: publicUrl,
+              filename,
+              original_name: file.name,
+              size: fileData.byteLength,
+              doc_type: docType,
+              driver_id: targetDriverId || null
+            });
           }
 
+          const primary = uploadedResults[0];
           return json({
             success: true,
-            url: publicUrl,
-            file_key: objectKey,
-            filename,
-            doc_id: docId,
-            driver_id: targetDriverId || null,
-            doc_type: docType,
+            url: primary.url,
+            file_key: primary.file_key,
+            filename: primary.filename,
+            doc_id: primary.doc_id,
+            driver_id: primary.driver_id,
+            doc_type: primary.doc_type,
+            documents: uploadedResults,
           });
         } catch (err: any) {
-          console.error('Upload endpoint error:', err);
+          console.error('[Upload Pipeline Fatal Error]:', err);
           return json({ error: err.message || 'File upload failed' }, 500);
         }
       }

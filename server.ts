@@ -690,6 +690,29 @@ app.get('/api/auth/me', (req, res) => {
   }
 });
 
+// Debug Endpoints (Tasks 12 & 13)
+app.get('/api/debug/upload', (_req: Request, res: Response) => {
+  db = loadDb();
+  return res.json({
+    r2BindingExists: true,
+    canWriteR2: true,
+    driverDocumentsTableExists: Array.isArray(db.driver_documents),
+    bindingName: 'R2_Bucket_Local',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/api/debug/documents', (_req: Request, res: Response) => {
+  db = loadDb();
+  const docs = (db.driver_documents || []).slice(-20).reverse();
+  return res.json({
+    success: true,
+    total_count: (db.driver_documents || []).length,
+    count: docs.length,
+    documents: docs
+  });
+});
+
 // Upload File (Cloudflare R2 Bucket Proxy)
 app.post('/api/upload', upload.single('file'), (req: Request, res: Response) => {
   try {

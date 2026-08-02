@@ -95,3 +95,27 @@ export function validateMobileNumber(input: string): { valid: boolean; error?: s
   }
   return { valid: true };
 }
+
+/**
+ * Format Vehicle Registration or Licence Number into uppercase dash format
+ * Example: 'lhr5658' -> 'LHR-5658', 'lea 1234' -> 'LEA-1234'
+ */
+export function formatVehicleRegNumber(input: string): string {
+  if (!input) return '';
+  const clean = input.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const match = clean.match(/^([A-Z]{1,5})(\d{1,8})$/);
+  if (match) {
+    return `${match[1]}-${match[2]}`;
+  }
+  return clean;
+}
+
+export function formatLicenceNumber(input: string): string {
+  if (!input) return '';
+  const clean = input.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const match = clean.match(/^([A-Z]{1,5})(\d{1,8})$/);
+  if (match) {
+    return `${match[1]}-${match[2]}`;
+  }
+  return clean;
+}

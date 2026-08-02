@@ -381,23 +381,43 @@ export const api = {
   uploadFile: async (file: File, docType?: string, driverId?: string): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
-    if (docType) formData.append('doc_type', docType);
+    if (docType) {
+      formData.append('doc_type', docType);
+      formData.append(docType, file);
+    }
     if (driverId) formData.append('driver_id', driverId);
 
     const token = localStorage.getItem('apnicar_token');
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     try {
       const res = await fetch(`${API_BASE}/api/upload`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers,
         body: formData,
       });
+
       if (res.ok) {
         const data = await res.json();
         return data.url || URL.createObjectURL(file);
+      } else {
+        let errMsg = `Upload failed with status ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData.error || errData.message) {
+            errMsg = errData.error || errData.message;
+          }
+        } catch (_) {}
+        console.error('[uploadFile Error]', errMsg);
+        throw new Error(errMsg);
       }
-    } catch (e) {}
-    // Fallback client URL if upload endpoint not yet bound
-    return URL.createObjectURL(file);
+    } catch (e: any) {
+      console.warn('[uploadFile warning] Endpoint request failed, returning client fallback:', e);
+      return URL.createObjectURL(file);
+    }
   },
 
   getDriverDocuments: async (driverId: string): Promise<DriverDocument[]> => {

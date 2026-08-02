@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../api/client';
 import { compressImage } from '../utils/imageCompressor';
-import { formatCNIC, validateCNIC, formatMobileNumber, validateMobileNumber } from '../utils/formatters';
+import { formatCNIC, validateCNIC, formatMobileNumber, validateMobileNumber, formatLicenceNumber, formatVehicleRegNumber } from '../utils/formatters';
 import { User, Driver, VehicleType } from '../types';
 import { X, UserCheck, ShieldCheck, Upload, Mail, Lock, Phone, User as UserIcon, Car, Key, Sparkles, CheckCircle2, Home } from 'lucide-react';
 
@@ -517,7 +517,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
                     required
                     placeholder="LHR-987654"
                     value={drivingLicence}
-                    onChange={(e) => setDrivingLicence(e.target.value)}
+                    onChange={(e) => setDrivingLicence(formatLicenceNumber(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -546,9 +546,9 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
                     <input
                       type="text"
                       required
-                      placeholder="LEA-5678"
+                      placeholder="LHR-5658"
                       value={vehicleRegNumber}
-                      onChange={(e) => setVehicleRegNumber(e.target.value)}
+                      onChange={(e) => setVehicleRegNumber(formatVehicleRegNumber(e.target.value))}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
