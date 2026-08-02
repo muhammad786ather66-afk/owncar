@@ -108,6 +108,30 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
     }
   };
 
+  const [resendingCode, setResendingCode] = useState(false);
+
+  const handleResendCode = async () => {
+    if (!verifyEmail) {
+      setError('Please enter your email address to receive a verification code.');
+      return;
+    }
+    setResendingCode(true);
+    setError('');
+    try {
+      const res = await api.sendVerificationCode(verifyEmail);
+      if (res.code_demo) {
+        setDemoCodeNotice(`📩 Verification Email Sent! Code: ${res.code_demo}`);
+        setVerifyCode(res.code_demo);
+      } else {
+        setSuccessMsg(res.message || 'Verification code sent to email.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to send verification code');
+    } finally {
+      setResendingCode(false);
+    }
+  };
+
   const handleRegisterRider = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -136,12 +160,14 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
         onLoginSuccess(res.user, null, res.token);
         onClose();
       } else {
-        setSuccessMsg(res.message || 'Registration successful! Please sign in with your account.');
-        setActiveTab('login');
-        setUsernameOrEmail(email || username);
+        const code = (res as any).verification_code_demo || '123456';
+        setVerifyEmail(email);
+        setVerifyCode(code);
+        setDemoCodeNotice(`📩 Account created! Your email verification code is: ${code}`);
+        setActiveTab('verify');
       }
     } catch (err: any) {
-      setError(err.message || 'Registration failed');
+      setError(err.message || 'Registration failed. Please check your details.');
     } finally {
       setLoading(false);
     }
@@ -189,11 +215,14 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
         licence_doc_url: licenceDocUrl,
         registration_doc_url: regDocUrl,
       });
-      setSuccessMsg(res.message || 'Application submitted successfully. Waiting for admin approval.');
-      setActiveTab('login');
-      setUsernameOrEmail(email || username);
+
+      const code = (res as any).verification_code_demo || '123456';
+      setVerifyEmail(email);
+      setVerifyCode(code);
+      setDemoCodeNotice(`📩 Driver account registered! Your email verification code is: ${code}`);
+      setActiveTab('verify');
     } catch (err: any) {
-      setError(err.message || 'Driver registration failed');
+      setError(err.message || 'Driver registration failed. Check details.');
     } finally {
       setLoading(false);
     }
@@ -204,12 +233,17 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
     setLoading(true);
     setError('');
     try {
-      await api.verifyEmail(verifyEmail, verifyCode);
-      setSuccessMsg('Email verified successfully! Please log in now.');
-      setActiveTab('login');
-      setUsernameOrEmail(verifyEmail);
+      const res = await api.verifyEmail(verifyEmail, verifyCode);
+      if (res.token && res.user) {
+        onLoginSuccess(res.user, res.driver || null, res.token);
+        onClose();
+      } else {
+        setSuccessMsg('Email verified successfully! Please log in now.');
+        setActiveTab('login');
+        setUsernameOrEmail(verifyEmail);
+      }
     } catch (err: any) {
-      setError(err.message || 'Verification failed');
+      setError(err.message || 'Verification failed. Please check your code.');
     } finally {
       setLoading(false);
     }
@@ -647,24 +681,42 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
           {activeTab === 'verify' && (
             <form onSubmit={handleVerifyEmail} className="space-y-4">
               {demoCodeNotice && (
-                <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-800 font-bold">
-                  {demoCodeNotice}
+                <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-2xl text-xs text-emerald-900 font-medium space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-emerald-700">
+                    <Mail className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Email Dispatch Notification</span>
+                  </div>
+                  <p>{demoCodeNotice}</p>
                 </div>
               )}
 
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  value={verifyEmail}
-                  onChange={(e) => setVerifyEmail(e.target.value)}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold"
-                />
+                <div className="relative">
+                  <input
+                    type="email"
+                    required
+                    placeholder="name@example.com"
+                    value={verifyEmail}
+                    onChange={(e) => setVerifyEmail(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <Mail className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5" />
+                </div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">6-Digit Verification Code</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700">6-Digit Verification Code</label>
+                  <button
+                    type="button"
+                    onClick={handleResendCode}
+                    disabled={resendingCode}
+                    className="text-xs font-bold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors disabled:opacity-50"
+                  >
+                    {resendingCode ? 'Sending Code...' : 'Resend Code to Email'}
+                  </button>
+                </div>
                 <input
                   type="text"
                   required
@@ -672,16 +724,26 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
                   placeholder="123456"
                   value={verifyCode}
                   onChange={(e) => setVerifyCode(e.target.value)}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-xl font-mono font-bold tracking-widest text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-2xl font-mono font-black tracking-widest text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-inner"
                 />
+                <p className="text-[11px] text-slate-400 text-center mt-1">
+                  A 6-digit code has been generated and dispatched to your email inbox.
+                </p>
               </div>
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition-all disabled:opacity-50"
+                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {loading ? 'Verifying...' : 'Verify Email Address'}
+                {loading ? (
+                  <span>Verifying Code...</span>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Verify & Continue</span>
+                  </>
+                )}
               </button>
             </form>
           )}

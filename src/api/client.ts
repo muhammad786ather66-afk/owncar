@@ -107,9 +107,15 @@ export const api = {
   },
 
   verifyEmail: (email: string, code: string) =>
-    request<{ success: boolean; message: string }>('/api/auth/verify-email', {
+    request<{ success: boolean; message: string; token?: string; user?: User; driver?: Driver | null }>('/api/auth/verify-email', {
       method: 'POST',
       body: JSON.stringify({ email, code }),
+    }),
+
+  sendVerificationCode: (email: string) =>
+    request<{ success: boolean; message: string; code_demo?: string }>('/api/auth/send-verification-code', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
     }),
 
   login: async (identifierOrUsername: string, password: string) => {
@@ -635,6 +641,35 @@ export const api = {
       });
     } catch (e: any) {
       return { success: false, message: e?.message || 'Failed to delete driver record' };
+    }
+  },
+
+  getAdminUsers: async () => {
+    try {
+      return await request<{ users: User[] }>('/api/admin/users');
+    } catch (e) {
+      return { users: [] };
+    }
+  },
+
+  deleteUser: async (userId: string) => {
+    try {
+      return await request<{ success: boolean; message: string }>(`/api/admin/users/${userId}`, {
+        method: 'DELETE',
+      });
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Failed to delete user' };
+    }
+  },
+
+  sendBroadcastNotification: async (title: string, message: string, targetRole: string = 'all') => {
+    try {
+      return await request<{ success: boolean; message: string }>('/api/admin/broadcast', {
+        method: 'POST',
+        body: JSON.stringify({ title, message, targetRole }),
+      });
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Failed to send broadcast' };
     }
   },
 

@@ -124,6 +124,28 @@
       "mobile_number": "+923001119988",
       "email_verified": 1,
       "created_at": "2026-08-01T05:47:22.124Z"
+    },
+    {
+      "id": "usr-1785677994891-7fdpx",
+      "role": "rider",
+      "username": "testrider123",
+      "full_name": "Test Rider",
+      "email": "testrider123@example.com",
+      "password_hash": "$2b$10$SktZBR4AWTMa7Uxc3VrxZ.5qHNZ2.pRjyBH8P9ILKN6KJkJZlH.zK",
+      "mobile_number": "+923001234567",
+      "email_verified": 1,
+      "created_at": "2026-08-02T13:39:54.996Z"
+    },
+    {
+      "id": "usr-1785678006672-pdkyu",
+      "role": "driver",
+      "username": "drivertest99",
+      "full_name": "Test Driver 99",
+      "email": "drivertest99@example.com",
+      "password_hash": "$2b$10$9xc7tPsgZFx4/lPNxJalMOZYSIFLIFbHFT4Wxl/LON/FWH7lo6h4C",
+      "mobile_number": "+923009988776",
+      "email_verified": 1,
+      "created_at": "2026-08-02T13:40:06.777Z"
     }
   ],
   "drivers": [
@@ -200,6 +222,27 @@
       "vehicle_model": "Civic",
       "vehicle_colour": "White",
       "vehicle_reg_number": "REG-1234",
+      "is_approved": 0,
+      "cnic_front_url": "",
+      "cnic_back_url": "",
+      "licence_doc_url": "",
+      "registration_doc_url": "",
+      "is_online": 0,
+      "current_lat": 31.5204,
+      "current_lng": 74.3587,
+      "rating": 5,
+      "total_rides": 0
+    },
+    {
+      "id": "drv-1785678010248",
+      "user_id": "usr-1785678006672-pdkyu",
+      "cnic": "35202-9999999-9",
+      "driving_licence": "LIC-9999",
+      "vehicle_type": "Car",
+      "vehicle_brand": "Suzuki",
+      "vehicle_model": "Alto",
+      "vehicle_colour": "White",
+      "vehicle_reg_number": "LEA-9999",
       "is_approved": 0,
       "cnic_front_url": "",
       "cnic_back_url": "",
@@ -355,6 +398,18 @@
       "email": "existing_driver@apnicar.pk",
       "token": "session-tok-1785563242125-368kd",
       "expires_at": "2027-08-01T05:47:22.125Z"
+    },
+    {
+      "id": "tok-1785677994996",
+      "email": "testrider123@example.com",
+      "token": "session-tok-1785677994996-pc31c",
+      "expires_at": "2027-08-02T13:39:54.996Z"
+    },
+    {
+      "id": "tok-1785678006777",
+      "email": "drivertest99@example.com",
+      "token": "session-tok-1785678006777-5sh4r",
+      "expires_at": "2027-08-02T13:40:06.777Z"
     }
   ],
   "driver_documents": [
