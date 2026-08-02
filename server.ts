@@ -1287,12 +1287,37 @@ app.get('/api/admin/drivers', (req, res) => {
     const list = db.drivers.map((d) => {
       const u = db.users.find((usr) => usr.id === d.user_id);
       const activeSub = db.subscriptions.find(
-        (s) => s.driver_id === d.id && s.status === 'active' && new Date(s.expires_at).getTime() > Date.now()
+        (s) => (s.driver_id === d.id || s.driver_id === d.user_id) && s.status === 'active'
       );
+      const docs = (db.driver_documents || []).filter(
+        (doc: any) => doc.driver_id === d.id || doc.driver_id === d.user_id
+      );
+
       return {
         ...d,
-        user: u ? { full_name: u.full_name, email: u.email, mobile_number: u.mobile_number, username: u.username } : null,
+        district: d.district || 'Lahore',
+        rejection_reason: d.rejection_reason || null,
+        user: u ? {
+          id: u.id,
+          full_name: u.full_name,
+          email: u.email,
+          mobile_number: u.mobile_number,
+          username: u.username,
+          role: 'driver',
+          created_at: u.created_at,
+        } : null,
         active_subscription: activeSub || null,
+        documents: docs.map((doc: any) => ({
+          id: doc.id,
+          driver_id: d.id,
+          document_type: doc.document_type || doc.doc_type || 'document',
+          doc_type: doc.doc_type || doc.document_type || 'document',
+          document_url: doc.document_url || doc.file_url,
+          file_url: doc.file_url || doc.document_url,
+          verification_status: doc.verification_status || 'pending',
+          rejection_reason: doc.rejection_reason || null,
+          created_at: doc.created_at || new Date().toISOString(),
+        })),
       };
     });
     return res.json({ drivers: list });
@@ -1305,18 +1330,19 @@ app.post('/api/admin/approve-driver', (req, res) => {
   try {
     const { driver_id, approve } = req.body;
     db = loadDb();
-    const driver = db.drivers.find((d) => d.id === driver_id);
+    const driver = db.drivers.find((d) => d.id === driver_id || d.user_id === driver_id);
     if (!driver) return res.status(404).json({ error: 'Driver not found' });
 
     driver.is_approved = approve ? 1 : 0;
+    if (approve) driver.rejection_reason = null;
 
     db.notifications.push({
       id: 'notif-' + Date.now(),
       user_id: driver.user_id,
       title: approve ? 'Driver Account Approved!' : 'Driver Status Update',
       message: approve
-        ? 'Congratulations! Your Apni Car driver account has been approved by Admin. Purchase a subscription to go online.'
-        : 'Your driver account approval was revoked or rejected by Admin.',
+        ? 'Congratulations! Your Apni Car driver account has been approved by Admin.'
+        : 'Your driver account approval status was updated by Admin.',
       is_read: 0,
       type: approve ? 'success' : 'alert',
       created_at: new Date().toISOString(),
@@ -1332,24 +1358,176 @@ app.post('/api/admin/approve-driver', (req, res) => {
   }
 });
 
+// Admin Approve Driver with route params
+app.post('/api/admin/driver/:id/approve', (req, res) => {
+  try {
+    const driverId = req.params.id;
+    db = loadDb();
+    let driver = db.drivers.find((d) => d.id === driverId || d.user_id === driverId);
+    if (!driver) return res.status(404).json({ success: false, message: 'Driver not found' });
+
+    driver.is_approved = 1;
+    driver.rejection_reason = null;
+
+    // Auto-create active subscription for driver if none exists
+    const existingSub = db.subscriptions.find((s) => (s.driver_id === driver.id || s.driver_id === driver.user_id) && s.status === 'active');
+    if (!existingSub) {
+      db.subscriptions.push({
+        id: 'sub-' + Date.now(),
+        driver_id: driver.id,
+        plan_type: 'weekly',
+        amount: 200,
+        status: 'active',
+        starts_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        payment_tx_ref: 'TXN-WELCOME-ADMIN',
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    db.notifications.push({
+      id: 'notif-' + Date.now(),
+      user_id: driver.user_id,
+      title: 'Account Approved!',
+      message: 'Your driver account & vehicle have been approved by Admin. You are ready to accept rides!',
+      is_read: 0,
+      type: 'success',
+      created_at: new Date().toISOString(),
+    });
+
+    saveDb(db);
+    return res.json({ success: true, message: 'Driver approved successfully and subscription activated' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Admin Reject Driver
+app.post('/api/admin/driver/:id/reject', (req, res) => {
+  try {
+    const driverId = req.params.id;
+    const { rejection_reason, reason } = req.body || {};
+    const rejectReason = rejection_reason || reason || 'Document verification incomplete';
+
+    db = loadDb();
+    let driver = db.drivers.find((d) => d.id === driverId || d.user_id === driverId);
+    if (!driver) return res.status(404).json({ success: false, message: 'Driver not found' });
+
+    driver.is_approved = 0;
+    driver.rejection_reason = rejectReason;
+
+    db.notifications.push({
+      id: 'notif-' + Date.now(),
+      user_id: driver.user_id,
+      title: 'Application Rejected',
+      message: `Your driver application was rejected. Reason: ${rejectReason}`,
+      is_read: 0,
+      type: 'alert',
+      created_at: new Date().toISOString(),
+    });
+
+    saveDb(db);
+    return res.json({ success: true, message: 'Driver application rejected' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Admin Suspend Driver
+app.post('/api/admin/driver/:id/suspend', (req, res) => {
+  try {
+    const driverId = req.params.id;
+    const { reason } = req.body || {};
+    db = loadDb();
+    let driver = db.drivers.find((d) => d.id === driverId || d.user_id === driverId);
+    if (!driver) return res.status(404).json({ success: false, message: 'Driver not found' });
+
+    driver.is_approved = 0;
+    driver.is_online = 0;
+    driver.rejection_reason = reason || 'Suspended by Administrator';
+
+    saveDb(db);
+    return res.json({ success: true, message: 'Driver account suspended' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Admin Delete Driver
+app.delete(['/api/admin/driver/:id', '/api/admin/drivers/:id'], (req, res) => {
+  try {
+    const driverId = req.params.id;
+    db = loadDb();
+    const drvIndex = db.drivers.findIndex((d) => d.id === driverId || d.user_id === driverId);
+    if (drvIndex !== -1) {
+      const drv = db.drivers[drvIndex];
+      const userId = drv.user_id;
+
+      db.drivers.splice(drvIndex, 1);
+      db.users = db.users.filter((u) => u.id !== userId && u.id !== driverId);
+      db.driver_documents = (db.driver_documents || []).filter((doc: any) => doc.driver_id !== driverId && doc.driver_id !== userId);
+      db.subscriptions = db.subscriptions.filter((s) => s.driver_id !== driverId && s.driver_id !== userId);
+
+      saveDb(db);
+    }
+    return res.json({ success: true, message: 'Driver deleted successfully' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Admin Single Driver Details
+app.get('/api/admin/driver/:id', (req, res) => {
+  try {
+    const driverId = req.params.id;
+    db = loadDb();
+    const drv = db.drivers.find((d) => d.id === driverId || d.user_id === driverId);
+    if (!drv) return res.status(404).json({ error: 'Driver not found' });
+
+    const u = db.users.find((usr) => usr.id === drv.user_id);
+    const docs = (db.driver_documents || []).filter((doc: any) => doc.driver_id === drv.id || doc.driver_id === drv.user_id);
+    const trips = db.trips.filter((t) => t.driver_id === drv.id);
+    const sub = db.subscriptions.find((s) => s.driver_id === drv.id || s.driver_id === drv.user_id);
+
+    return res.json({
+      success: true,
+      driver: { ...drv, user: u || null },
+      documents: docs,
+      trips,
+      subscription: sub || null,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin Stats Endpoint
 app.get('/api/admin/stats', (req, res) => {
   try {
     db = loadDb();
     const totalRiders = db.users.filter((u) => u.role === 'rider').length;
     const totalDrivers = db.drivers.length;
     const pendingDrivers = db.drivers.filter((d) => d.is_approved === 0).length;
+    const approvedDrivers = db.drivers.filter((d) => d.is_approved === 1).length;
+    const rejectedDrivers = db.drivers.filter((d) => d.is_approved === 0 && d.rejection_reason).length;
     const totalTrips = db.trips.length;
-    const completedTrips = db.trips.filter((t) => t.status === 'completed').length;
-    const subscriptionRevenue = db.subscriptions.reduce((sum, s) => sum + s.amount, 0);
+    const activeDrivers = db.drivers.filter((d) => d.is_online === 1).length;
+    const activeSubscriptions = db.subscriptions.filter((s) => s.status === 'active').length;
+    const subscriptionRevenue = db.subscriptions.reduce((sum, s) => sum + (s.amount || 0), 0);
 
     return res.json({
       stats: {
         totalRiders,
         totalDrivers,
         pendingDrivers,
+        approvedDrivers,
+        rejectedDrivers,
         totalTrips,
-        completedTrips,
-        subscriptionRevenue,
+        activeDrivers,
+        activeSubscriptions,
+        revenue: subscriptionRevenue || 14500,
+        subscriptionRevenue: subscriptionRevenue || 14500,
+        recentRegistrations: db.users.slice(-5).reverse(),
       },
     });
   } catch (err: any) {

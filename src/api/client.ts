@@ -1,6 +1,6 @@
 import { User, Driver, Subscription, Trip, NotificationItem, DriverDocument, AdminStats } from '../types';
 
-const DEFAULT_API_BASE = 'https://apnicar-backend.muhammad786-ather66.workers.dev';
+const DEFAULT_API_BASE = '';
 const API_BASE = (
   ((import.meta as any).env?.VITE_API_BASE_URL as string) || DEFAULT_API_BASE
 ).replace(/\/$/, '');
