@@ -52,50 +52,51 @@ export const Navbar: React.FC<Props> = ({
         </div>
 
         {/* Navigation / Role Toggles */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             onClick={onHome}
-            className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-full text-xs font-extrabold flex items-center gap-1.5 transition-all border border-slate-200"
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-full text-xs font-extrabold flex items-center gap-1 transition-all border border-slate-200"
             title="Go to Home / Dashboard"
           >
-            <Home className="w-4 h-4 text-amber-600" />
+            <Home className="w-3.5 h-3.5 text-amber-600" />
             <span className="hidden sm:inline">Home</span>
           </button>
 
-          {user && (
-            <div className="flex items-center bg-slate-100 p-1.5 rounded-full border border-slate-200 shadow-2xs">
-              <button
-                onClick={() => onSwitchRole('rider')}
-                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  activeRole === 'rider'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Rider
-              </button>
-              <button
-                onClick={() => onSwitchRole('driver')}
-                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  activeRole === 'driver'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Driver
-              </button>
-              <button
-                onClick={() => onSwitchRole('admin')}
-                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  activeRole === 'admin'
-                    ? 'bg-yellow-400 text-slate-950 shadow-sm'
-                    : 'text-amber-700 hover:text-slate-900'
-                }`}
-              >
-                Admin
-              </button>
-            </div>
-          )}
+          <button
+            onClick={() => onSwitchRole('admin')}
+            className={`px-3 py-1.5 rounded-full text-xs font-extrabold flex items-center gap-1 transition-all border ${
+              activeRole === 'admin'
+                ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-sm'
+                : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
+            }`}
+            title="Open Admin Dashboard & Document Inspector"
+          >
+            <Shield className="w-3.5 h-3.5 text-slate-950" />
+            <span>Admin Panel</span>
+          </button>
+
+          <div className="flex items-center bg-slate-100 p-1 rounded-full border border-slate-200 shadow-2xs">
+            <button
+              onClick={() => onSwitchRole('rider')}
+              className={`px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                activeRole === 'rider'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Rider
+            </button>
+            <button
+              onClick={() => onSwitchRole('driver')}
+              className={`px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                activeRole === 'driver'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Driver
+            </button>
+          </div>
         </div>
 
         {/* Right Actions */}
