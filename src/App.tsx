@@ -176,7 +176,7 @@ export default function App() {
           />
         ) : (
           <>
-            {activeRole === 'admin' && user?.role === 'admin' ? (
+            {activeRole === 'admin' ? (
               <AdminDashboard />
             ) : activeRole === 'driver' && driver && user ? (
               <DriverDashboard

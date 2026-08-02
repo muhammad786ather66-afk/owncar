@@ -390,29 +390,37 @@ export const api = {
   // Helper: Upload directly to Cloudinary using unsigned upload preset
   uploadToCloudinary: async (file: File): Promise<string | null> => {
     const cloudName = 'tqvvwote';
-    // User provided preset: 'unassigned' (also try common variations)
-    const presets = ['unassigned', 'unsigned', 'ml_default', 'driver_docs', 'apnicar_preset'];
+    // User provided preset: 'apnicar_docs' (from Cloudinary dashboard screenshot)
+    const presets = ['apnicar_docs', 'unassigned', 'unsigned', 'ml_default', 'driver_docs', 'apnicar_preset'];
+    const endpoints = [
+      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+      `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`
+    ];
 
-    for (const preset of presets) {
-      try {
-        const cForm = new FormData();
-        cForm.append('file', file);
-        cForm.append('upload_preset', preset);
+    for (const endpoint of endpoints) {
+      for (const preset of presets) {
+        try {
+          const cForm = new FormData();
+          cForm.append('file', file);
+          cForm.append('upload_preset', preset);
 
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-          method: 'POST',
-          body: cForm,
-        });
+          console.log(`[Cloudinary Upload Attempt] Target: ${cloudName}, Preset: '${preset}'`);
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            body: cForm,
+          });
 
-        if (res.ok) {
-          const cData = await res.json();
-          if (cData.secure_url) {
-            console.log(`[Cloudinary Success] Uploaded to Cloudinary with preset '${preset}':`, cData.secure_url);
+          const cData = await res.json().catch(() => null);
+
+          if (res.ok && cData?.secure_url) {
+            console.log(`%c[Cloudinary Success] Saved to Cloudinary! URL: ${cData.secure_url}`, 'color: green; font-weight: bold;');
             return cData.secure_url;
+          } else if (cData?.error?.message) {
+            console.warn(`[Cloudinary Response Warning] Status: ${res.status}, Preset: '${preset}', Message: "${cData.error.message}"`);
           }
+        } catch (e: any) {
+          console.warn(`[Cloudinary Upload Exception] Preset '${preset}':`, e?.message || e);
         }
-      } catch (e) {
-        console.warn(`[Cloudinary Upload Preset '${preset}' Warning]`, e);
       }
     }
     return null;

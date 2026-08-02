@@ -6,6 +6,7 @@ import { ShieldCheck, CheckCircle, XCircle, FileText, Car, DollarSign, Users, Ac
 export const AdminDashboard: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [stats, setStats] = useState<any>(null);
+  const [d1Docs, setD1Docs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState('');
   const [viewingDocModal, setViewingDocModal] = useState<string | null>(null);
@@ -22,6 +23,9 @@ export const AdminDashboard: React.FC = () => {
 
       const statsRes = await api.getAdminStats();
       setStats(statsRes.stats || null);
+
+      const docsRes = await api.getDriverDocuments('all').catch(() => []);
+      setD1Docs(docsRes || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -160,6 +164,103 @@ export const AdminDashboard: React.FC = () => {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* D1 Database & Cloudinary Document Inspector */}
+      <div className="p-6 bg-white rounded-3xl shadow-xl border border-slate-100 space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+          <div>
+            <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <span>Cloudflare D1 & Cloudinary Documents</span>
+              <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full">
+                {d1Docs.length} Records Found
+              </span>
+            </h3>
+            <p className="text-xs text-slate-500">
+              Live records synced in D1 `driver_documents` table with direct Cloudinary or Base64 file URLs.
+            </p>
+          </div>
+        </div>
+
+        {d1Docs.length === 0 ? (
+          <div className="p-8 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+            No document rows inserted yet in D1 database. Register a driver or upload documents in registration flow to populate.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-700">
+              <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-100">
+                <tr>
+                  <th className="p-3">Doc ID</th>
+                  <th className="p-3">Driver ID</th>
+                  <th className="p-3">Doc Type</th>
+                  <th className="p-3">Storage Source / URL</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3 text-right">Preview</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {d1Docs.map((doc, idx) => {
+                  const url = doc.file_url || doc.document_url || '';
+                  const isCloudinary = url.includes('cloudinary.com');
+                  const isBase64 = url.startsWith('data:image');
+                  const storageSource = isCloudinary
+                    ? 'Cloudinary (Cloud)'
+                    : isBase64
+                    ? 'Base64 (D1 Storage)'
+                    : 'External / Object Storage';
+
+                  return (
+                    <tr key={doc.id || idx} className="hover:bg-slate-50/60">
+                      <td className="p-3 font-mono text-[11px] font-bold text-slate-900">
+                        {doc.id}
+                      </td>
+                      <td className="p-3 font-mono text-slate-600 text-[11px]">
+                        {doc.driver_id}
+                      </td>
+                      <td className="p-3 font-bold text-amber-700 uppercase text-[10px]">
+                        {doc.doc_type || doc.document_type || 'document'}
+                      </td>
+                      <td className="p-3">
+                        <span
+                          className={`px-2 py-0.5 text-[10px] font-bold rounded-full inline-block mb-1 ${
+                            isCloudinary
+                              ? 'bg-blue-100 text-blue-800'
+                              : isBase64
+                              ? 'bg-purple-100 text-purple-800'
+                              : 'bg-slate-100 text-slate-800'
+                          }`}
+                        >
+                          {storageSource}
+                        </span>
+                        <div className="font-mono text-[10px] text-slate-400 truncate max-w-xs">
+                          {url.length > 50 ? url.substring(0, 50) + '...' : url}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">
+                          {doc.verification_status || 'Verified'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right">
+                        {url ? (
+                          <button
+                            onClick={() => setViewingDocModal(url)}
+                            className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-[10px] inline-flex items-center gap-1"
+                          >
+                            <Eye className="w-3 h-3" /> Inspect
+                          </button>
+                        ) : (
+                          <span className="text-slate-400 text-[10px]">No Link</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Document Viewer Modal */}

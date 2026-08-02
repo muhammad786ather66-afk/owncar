@@ -84,18 +84,16 @@ export const Navbar: React.FC<Props> = ({
               >
                 Driver
               </button>
-              {user.role === 'admin' && (
-                <button
-                  onClick={() => onSwitchRole('admin')}
-                  className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                    activeRole === 'admin'
-                      ? 'bg-yellow-400 text-slate-950 shadow-sm'
-                      : 'text-amber-700 hover:text-slate-900'
-                  }`}
-                >
-                  Admin
-                </button>
-              )}
+              <button
+                onClick={() => onSwitchRole('admin')}
+                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  activeRole === 'admin'
+                    ? 'bg-yellow-400 text-slate-950 shadow-sm'
+                    : 'text-amber-700 hover:text-slate-900'
+                }`}
+              >
+                Admin
+              </button>
             </div>
           )}
         </div>
