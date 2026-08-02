@@ -150,15 +150,43 @@ export async function reverseGeocodeOSM(lat: number, lng: number): Promise<strin
 }
 
 /**
- * Popular Pakistan Cities preset coordinates
+ * Major Cities of Punjab, Pakistan (ApniCar Operational Zone)
  */
-export const PAKISTAN_CITIES = [
-  { name: 'Lahore', lat: 31.5204, lng: 74.3587, address: 'Liberty Market, Gulberg III, Lahore' },
-  { name: 'Karachi', lat: 24.8607, lng: 67.0011, address: 'Clifton Beach, Karachi' },
-  { name: 'Islamabad', lat: 33.6844, lng: 73.0479, address: 'F-7 Markaz, Islamabad' },
-  { name: 'Rawalpindi', lat: 33.5651, lng: 73.0169, address: 'Saddar, Rawalpindi' },
-  { name: 'Peshawar', lat: 34.0151, lng: 71.5249, address: 'University Road, Peshawar' },
-  { name: 'Multan', lat: 30.1575, lng: 71.5249, address: 'Ghanta Ghar, Multan' },
-  { name: 'Faisalabad', lat: 31.4504, lng: 73.1350, address: 'Clock Tower, Faisalabad' },
-  { name: 'Quetta', lat: 30.1798, lng: 66.9750, address: 'Serena Road, Quetta' },
+export const PUNJAB_CITIES = [
+  { name: 'Lahore', lat: 31.5204, lng: 74.3587, address: 'Liberty Market, Gulberg III, Lahore, Punjab' },
+  { name: 'Faisalabad', lat: 31.4504, lng: 73.1350, address: 'Clock Tower, Faisalabad, Punjab' },
+  { name: 'Rawalpindi', lat: 33.5651, lng: 73.0169, address: 'Saddar, Rawalpindi, Punjab' },
+  { name: 'Multan', lat: 30.1575, lng: 71.5249, address: 'Ghanta Ghar, Multan, Punjab' },
+  { name: 'Gujranwala', lat: 32.1877, lng: 74.1945, address: 'GT Road, Gujranwala, Punjab' },
+  { name: 'Sargodha', lat: 32.0836, lng: 72.6711, address: 'University Road, Sargodha, Punjab' },
+  { name: 'Sialkot', lat: 32.4945, lng: 74.5229, address: 'Paris Road, Sialkot, Punjab' },
+  { name: 'Bahawalpur', lat: 29.3544, lng: 71.6911, address: 'Farid Gate, Bahawalpur, Punjab' },
+  { name: 'Gujarat', lat: 32.5742, lng: 74.0754, address: 'GTS Chowk, Gujarat, Punjab' },
+  { name: 'Sheikhupura', lat: 31.7167, lng: 73.9850, address: 'Company Bagh, Sheikhupura, Punjab' },
+  { name: 'Sahiwal', lat: 30.6682, lng: 73.1114, address: 'High Street, Sahiwal, Punjab' },
+  { name: 'Rahim Yar Khan', lat: 28.4212, lng: 70.2989, address: 'Town Hall, Rahim Yar Khan, Punjab' },
+  { name: 'Jhelum', lat: 32.9405, lng: 73.7276, address: 'Civil Lines, Jhelum, Punjab' },
+  { name: 'Attock', lat: 33.7660, lng: 72.3609, address: 'Kutchery Chowk, Attock, Punjab' },
+  { name: 'Kasur', lat: 31.1179, lng: 74.4461, address: 'Roshani Gate, Kasur, Punjab' },
+  { name: 'Okara', lat: 30.8081, lng: 73.4458, address: 'GT Road, Okara, Punjab' },
+  { name: 'Mianwali', lat: 32.5853, lng: 71.5436, address: 'Ballo Khel Road, Mianwali, Punjab' },
+  { name: 'Dera Ghazi Khan', lat: 30.0561, lng: 70.6348, address: 'College Road, Dera Ghazi Khan, Punjab' },
+  { name: 'Chakwal', lat: 32.9328, lng: 72.8630, address: 'Talagang Road, Chakwal, Punjab' },
+  { name: 'Chiniot', lat: 31.7200, lng: 72.9789, address: 'Kutchery Road, Chiniot, Punjab' },
+  { name: 'Hafizabad', lat: 32.0709, lng: 73.6880, address: 'Guijranwala Road, Hafizabad, Punjab' },
+  { name: 'Khanewal', lat: 30.3017, lng: 71.9321, address: 'Tariq Road, Khanewal, Punjab' },
+  { name: 'Layyah', lat: 30.9613, lng: 70.9390, address: 'Chowk Azam Road, Layyah, Punjab' },
+  { name: 'Lodhran', lat: 29.5405, lng: 71.6337, address: 'Super Highway, Lodhran, Punjab' },
+  { name: 'Mandi Bahauddin', lat: 32.5870, lng: 73.4912, address: 'Sadaat Market, Mandi Bahauddin, Punjab' },
+  { name: 'Muzaffargarh', lat: 30.0703, lng: 71.1933, address: 'Multan Road, Muzaffargarh, Punjab' },
+  { name: 'Nankana Sahib', lat: 31.4492, lng: 73.7124, address: 'Gurdwara Road, Nankana Sahib, Punjab' },
+  { name: 'Narowal', lat: 32.1020, lng: 74.8730, address: 'Circular Road, Narowal, Punjab' },
+  { name: 'Pakpattan', lat: 30.3410, lng: 73.3866, address: 'Sahiwal Road, Pakpattan, Punjab' },
+  { name: 'Rajanpur', lat: 29.1035, lng: 70.3250, address: 'Indus Highway, Rajanpur, Punjab' },
+  { name: 'Toba Tek Singh', lat: 30.9709, lng: 72.4826, address: 'Main Bazar, Toba Tek Singh, Punjab' },
+  { name: 'Vehari', lat: 30.0419, lng: 72.3528, address: 'Club Road, Vehari, Punjab' },
+  { name: 'Bhakkar', lat: 31.6253, lng: 71.0657, address: 'Jhang Road, Bhakkar, Punjab' },
 ];
+
+export const PAKISTAN_CITIES = PUNJAB_CITIES;
+

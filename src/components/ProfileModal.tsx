@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { User, Driver } from '../types';
 import { api } from '../api/client';
 import { compressImage } from '../utils/imageCompressor';
-import { X, User as UserIcon, Mail, Phone, CheckCircle, Upload, Shield, Car, Sparkles, Smartphone } from 'lucide-react';
+import { X, User as UserIcon, Mail, Phone, CheckCircle, Upload, Shield, Car, Sparkles, Smartphone, Home } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -43,12 +43,22 @@ export const ProfileModal: React.FC<Props> = ({ isOpen, onClose, user, driver, o
       <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100">
         {/* Header */}
         <div className="bg-slate-900 p-6 text-white text-center relative">
-          <button
-            onClick={onClose}
-            className="absolute top-5 right-5 p-1.5 text-slate-400 hover:text-white rounded-full bg-slate-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="absolute top-4 right-4 flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-3 py-1 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1 transition-colors shadow-sm"
+              title="Return Home"
+            >
+              <Home className="w-3.5 h-3.5" />
+              <span>Home</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 text-slate-400 hover:text-white rounded-full bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
           <div className="relative w-20 h-20 mx-auto mb-3">
             <div className="w-full h-full rounded-2xl bg-emerald-500 text-slate-950 font-black text-3xl flex items-center justify-center overflow-hidden shadow-xl ring-4 ring-emerald-500/20">

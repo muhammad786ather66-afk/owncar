@@ -1,6 +1,6 @@
 import React from 'react';
 import { User, Driver, Role } from '../types';
-import { Car, Bell, User as UserIcon, Shield, LogOut, CheckCircle, Smartphone } from 'lucide-react';
+import { Car, Bell, User as UserIcon, Shield, LogOut, CheckCircle, Smartphone, Home, Info, MapPin } from 'lucide-react';
 import { isPWAInstalled, promptPWAInstall } from '../utils/pwa';
 
 interface Props {
@@ -13,6 +13,8 @@ interface Props {
   onOpenProfile: () => void;
   activeRole: Role;
   onSwitchRole: (role: Role) => void;
+  onHome?: () => void;
+  onOpenInfo?: (tab?: 'about' | 'terms' | 'privacy' | 'contact') => void;
 }
 
 export const Navbar: React.FC<Props> = ({
@@ -25,14 +27,16 @@ export const Navbar: React.FC<Props> = ({
   onOpenProfile,
   activeRole,
   onSwitchRole,
+  onHome,
+  onOpenInfo,
 }) => {
   const isInstalled = isPWAInstalled();
 
   return (
     <header className="sticky top-0 z-40 bg-slate-50/90 backdrop-blur-md py-3 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto h-20 bg-white border border-slate-200 rounded-3xl flex items-center justify-between px-4 sm:px-8 shadow-sm">
-        {/* Brand Logo */}
-        <div className="flex items-center gap-3">
+        {/* Brand Logo & Home trigger */}
+        <div className="flex items-center gap-3 cursor-pointer" onClick={onHome}>
           <div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center font-black text-xl italic text-slate-900 shadow-sm shrink-0">
             AC
           </div>
@@ -40,49 +44,61 @@ export const Navbar: React.FC<Props> = ({
             <span className="text-xl sm:text-2xl font-black tracking-tight text-slate-900">
               Apni Car
             </span>
-            <span className="hidden sm:inline-block px-3 py-1 bg-yellow-400/20 text-slate-900 font-bold text-[10px] uppercase tracking-wider rounded-full border border-yellow-400/40">
-              0% Commission
+            <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 bg-amber-400/20 text-slate-900 font-bold text-[10px] uppercase tracking-wider rounded-full border border-amber-400/40">
+              <MapPin className="w-3 h-3 text-amber-600" />
+              Punjab
             </span>
           </div>
         </div>
 
-        {/* Center Role Toggles (if logged in) */}
-        {user && (
-          <div className="flex items-center bg-slate-100 p-1.5 rounded-full border border-slate-200 shadow-2xs">
-            <button
-              onClick={() => onSwitchRole('rider')}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                activeRole === 'rider'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Rider
-            </button>
-            <button
-              onClick={() => onSwitchRole('driver')}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                activeRole === 'driver'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Driver
-            </button>
-            {user.role === 'admin' && (
+        {/* Navigation / Role Toggles */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onHome}
+            className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-full text-xs font-extrabold flex items-center gap-1.5 transition-all border border-slate-200"
+            title="Go to Home / Dashboard"
+          >
+            <Home className="w-4 h-4 text-amber-600" />
+            <span className="hidden sm:inline">Home</span>
+          </button>
+
+          {user && (
+            <div className="flex items-center bg-slate-100 p-1.5 rounded-full border border-slate-200 shadow-2xs">
               <button
-                onClick={() => onSwitchRole('admin')}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  activeRole === 'admin'
-                    ? 'bg-yellow-400 text-slate-950 shadow-sm'
-                    : 'text-amber-700 hover:text-slate-900'
+                onClick={() => onSwitchRole('rider')}
+                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  activeRole === 'rider'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Admin
+                Rider
               </button>
-            )}
-          </div>
-        )}
+              <button
+                onClick={() => onSwitchRole('driver')}
+                className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  activeRole === 'driver'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Driver
+              </button>
+              {user.role === 'admin' && (
+                <button
+                  onClick={() => onSwitchRole('admin')}
+                  className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    activeRole === 'admin'
+                      ? 'bg-yellow-400 text-slate-950 shadow-sm'
+                      : 'text-amber-700 hover:text-slate-900'
+                  }`}
+                >
+                  Admin
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Right Actions */}
         <div className="flex items-center gap-2 sm:gap-3">

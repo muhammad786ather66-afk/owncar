@@ -11,7 +11,8 @@ import { DriverDashboard } from './components/DriverDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
 import { RideHistory } from './components/RideHistory';
 import { ProfileModal } from './components/ProfileModal';
-import { Shield, Sparkles, Car, CheckCircle, Smartphone } from 'lucide-react';
+import { InfoPagesModal } from './components/InfoPagesModal';
+import { Shield, Sparkles, Car, CheckCircle, Smartphone, MapPin, FileText, Info, Mail } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -23,6 +24,13 @@ export default function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showNotifDrawer, setShowNotifDrawer] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [infoTab, setInfoTab] = useState<'about' | 'terms' | 'privacy' | 'contact'>('about');
+
+  const openInfoPage = (tab: 'about' | 'terms' | 'privacy' | 'contact' = 'about') => {
+    setInfoTab(tab);
+    setShowInfoModal(true);
+  };
 
   // Notifications
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -154,6 +162,8 @@ export default function App() {
           setActiveRole(role);
           setCurrentView('dashboard');
         }}
+        onHome={() => setCurrentView('dashboard')}
+        onOpenInfo={(tab) => openInfoPage(tab)}
       />
 
       {/* Main Content View */}
@@ -190,15 +200,15 @@ export default function App() {
                 <div className="bg-white border border-slate-200 rounded-[32px] p-8 sm:p-12 shadow-sm text-center max-w-4xl mx-auto space-y-6 relative overflow-hidden">
                   <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-yellow-400/20 text-slate-900 rounded-full text-xs font-bold border border-yellow-400/40">
                     <Sparkles className="w-4 h-4 text-amber-600" />
-                    <span>Pakistan's #1 Zero Commission Ride-Hailing PWA</span>
+                    <span>Punjab's #1 Zero Commission Transport PWA</span>
                   </div>
 
                   <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-slate-900 tracking-tight leading-tight">
-                    Drive & Ride with <span className="bg-yellow-400 px-3 py-1 rounded-2xl text-slate-950 inline-block shadow-sm">Zero Commission</span>
+                    Drive & Ride Across Punjab with <span className="bg-yellow-400 px-3 py-1 rounded-2xl text-slate-950 inline-block shadow-sm">Zero Commission</span>
                   </h1>
 
                   <p className="text-base sm:text-lg text-slate-600 leading-relaxed max-w-2xl mx-auto">
-                    Apni Car connects passengers directly with verified drivers across Pakistan. Passengers pay cash directly, and drivers keep 100% of their earnings with flat subscription passes.
+                    Apni Car connects passengers directly with verified drivers across Lahore, Faisalabad, Rawalpindi, Multan & all 30+ Punjab districts. Cash paid directly to drivers with zero per-ride cut.
                   </p>
 
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
@@ -235,9 +245,9 @@ export default function App() {
                     <div className="w-12 h-12 rounded-2xl bg-slate-900 text-yellow-400 flex items-center justify-center font-black text-2xl shadow-2xs">
                       🗺️
                     </div>
-                    <h3 className="text-lg font-black italic">Live GPS Map</h3>
+                    <h3 className="text-lg font-black italic">Punjab GPS Map</h3>
                     <p className="text-xs text-slate-950 font-bold leading-relaxed">
-                      OpenStreetMap GPS tracking displays active verified drivers nearby in real-time.
+                      OpenStreetMap GPS tracking displays active verified drivers across Punjab in real-time.
                     </p>
                   </div>
 
@@ -258,13 +268,32 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-slate-900 text-slate-400 text-xs py-6 border-t border-slate-800 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 text-center space-y-2">
+      <footer className="bg-slate-900 text-slate-400 text-xs py-8 border-t border-slate-800 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 text-center space-y-4">
+          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 text-slate-300 font-bold">
+            <button onClick={() => openInfoPage('about')} className="hover:text-yellow-400 transition-colors">
+              About Us
+            </button>
+            <span className="text-slate-700">•</span>
+            <button onClick={() => openInfoPage('terms')} className="hover:text-yellow-400 transition-colors">
+              Terms & Conditions
+            </button>
+            <span className="text-slate-700">•</span>
+            <button onClick={() => openInfoPage('privacy')} className="hover:text-yellow-400 transition-colors">
+              Privacy Policy
+            </button>
+            <span className="text-slate-700">•</span>
+            <button onClick={() => openInfoPage('contact')} className="hover:text-yellow-400 transition-colors">
+              Contact Us
+            </button>
+          </div>
+
           <p className="font-semibold text-slate-300">
             Apni Car © {new Date().getFullYear()} • Powered by Cloudflare Workers, Cloudflare D1 (apnicar-db) & Cloudflare R2 (apnicar-documents)
           </p>
-          <p className="text-[11px] text-slate-500">
-            Zero-commission ride hailing app for Pakistan • Available in Lahore, Karachi, Islamabad, Rawalpindi, Peshawar, Multan & more.
+
+          <p className="text-[11px] text-slate-500 max-w-3xl mx-auto leading-relaxed">
+            Zero-commission transport platform built specifically for Punjab, Pakistan. Serving Lahore, Faisalabad, Rawalpindi, Multan, Gujranwala, Sargodha, Sialkot, Bahawalpur, Gujarat, Sheikhupura, Sahiwal, Rahim Yar Khan, Jhelum, Attock, Kasur, Okara & all 30+ Punjab districts.
           </p>
         </div>
       </footer>
@@ -300,6 +329,13 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Info & Legal Pages Modal */}
+      <InfoPagesModal
+        isOpen={showInfoModal}
+        onClose={() => setShowInfoModal(false)}
+        defaultTab={infoTab}
+      />
     </div>
   );
 }

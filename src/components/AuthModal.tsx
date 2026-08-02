@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { api } from '../api/client';
 import { compressImage } from '../utils/imageCompressor';
+import { formatCNIC, validateCNIC, formatMobileNumber, validateMobileNumber } from '../utils/formatters';
 import { User, Driver, VehicleType } from '../types';
-import { X, UserCheck, ShieldCheck, Upload, Mail, Lock, Phone, User as UserIcon, Car, Key, Sparkles, CheckCircle2 } from 'lucide-react';
+import { X, UserCheck, ShieldCheck, Upload, Mail, Lock, Phone, User as UserIcon, Car, Key, Sparkles, CheckCircle2, Home } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -70,7 +71,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
       if (targetField === 'licence') setLicenceDocUrl(url);
       if (targetField === 'reg') setRegDocUrl(url);
     } catch (err: any) {
-      setError(`Failed to upload document: ${err.message}`);
+      setError(`Failed to upload document: ${err.message || 'Error writing to storage'}`);
     } finally {
       setUploadingDoc(null);
     }
@@ -109,12 +110,20 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
 
   const handleRegisterRider = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+
+    // Validate Mobile Number
+    const phoneVal = validateMobileNumber(mobileNumber);
+    if (!phoneVal.valid) {
+      setError(phoneVal.error || 'Invalid mobile number');
+      return;
+    }
+
     if (regPassword !== confirmPassword) {
       setError('Passwords do not match');
       return;
     }
     setLoading(true);
-    setError('');
     try {
       const res = await api.registerRider({
         username,
@@ -140,12 +149,27 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
 
   const handleRegisterDriver = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+
+    // Validate Mobile Number
+    const phoneVal = validateMobileNumber(mobileNumber);
+    if (!phoneVal.valid) {
+      setError(phoneVal.error || 'Invalid mobile number');
+      return;
+    }
+
+    // Validate CNIC Number
+    const cnicVal = validateCNIC(cnic);
+    if (!cnicVal.valid) {
+      setError(cnicVal.error || 'Invalid CNIC number');
+      return;
+    }
+
     if (regPassword !== confirmPassword) {
       setError('Passwords do not match');
       return;
     }
     setLoading(true);
-    setError('');
     try {
       const res = await api.registerDriver({
         username,
@@ -196,15 +220,26 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
       <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 my-8">
         {/* Top Header */}
         <div className="bg-slate-900 p-6 text-white relative">
-          <button
-            onClick={onClose}
-            className="absolute top-5 right-5 p-1.5 text-slate-400 hover:text-white rounded-full bg-slate-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="absolute top-4 right-4 flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1 transition-colors shadow-sm"
+              title="Return Home"
+            >
+              <Home className="w-3.5 h-3.5" />
+              <span>Home</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 text-slate-400 hover:text-white rounded-full bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
           <div className="flex items-center gap-2 mb-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Apni Car Auth</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse" />
+            <span className="text-xs font-bold uppercase tracking-wider text-yellow-400">Apni Car Punjab</span>
           </div>
           <h2 className="text-2xl font-black tracking-tight">
             {activeTab === 'login' && 'Welcome Back'}
@@ -214,7 +249,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
           </h2>
           <p className="text-xs text-slate-400 mt-1">
             {activeTab === 'login' && 'Sign in using your Username or Email address'}
-            {activeTab === 'register_rider' && 'Book 0% commission rides across Pakistan'}
+            {activeTab === 'register_rider' && 'Book 0% commission rides across Punjab'}
             {activeTab === 'register_driver' && 'Earn 100% of your cash fares with flat subscriptions'}
             {activeTab === 'verify' && 'Enter 6-digit verification pin sent to your email'}
           </p>
@@ -224,24 +259,24 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
             <div className="grid grid-cols-3 gap-1 bg-slate-800/90 p-1 rounded-xl mt-4 border border-slate-700">
               <button
                 onClick={() => { setActiveTab('login'); setError(''); }}
-                className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
-                  activeTab === 'login' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                className={`py-1.5 text-xs font-bold rounded-lg transition-all break-words ${
+                  activeTab === 'login' ? 'bg-yellow-400 text-slate-950' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 Login
               </button>
               <button
                 onClick={() => { setActiveTab('register_rider'); setError(''); }}
-                className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
-                  activeTab === 'register_rider' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                className={`py-1.5 text-xs font-bold rounded-lg transition-all break-words ${
+                  activeTab === 'register_rider' ? 'bg-yellow-400 text-slate-950' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 Sign Up Rider
               </button>
               <button
                 onClick={() => { setActiveTab('register_driver'); setError(''); }}
-                className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
-                  activeTab === 'register_driver' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                className={`py-1.5 text-xs font-bold rounded-lg transition-all break-words ${
+                  activeTab === 'register_driver' ? 'bg-yellow-400 text-slate-950' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 Sign Up Driver
@@ -360,11 +395,12 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
                   <input
                     type="tel"
                     required
-                    placeholder="+923001234567"
+                    placeholder="03001234567 or +923001234567"
                     value={mobileNumber}
-                    onChange={(e) => setMobileNumber(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    onChange={(e) => setMobileNumber(formatMobileNumber(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-yellow-500"
                   />
+                  <span className="text-[10px] text-slate-400 font-medium">11 digits (0300-1234567)</span>
                 </div>
               </div>
 
@@ -452,11 +488,12 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
                   <input
                     type="tel"
                     required
-                    placeholder="+923019876543"
+                    placeholder="03019876543"
                     value={mobileNumber}
-                    onChange={(e) => setMobileNumber(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    onChange={(e) => setMobileNumber(formatMobileNumber(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-yellow-500"
                   />
+                  <span className="text-[10px] text-slate-400 font-medium">11 digits (0301-9876543)</span>
                 </div>
               </div>
 
@@ -468,9 +505,10 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
                     required
                     placeholder="35202-1234567-1"
                     value={cnic}
-                    onChange={(e) => setCnic(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    onChange={(e) => setCnic(formatCNIC(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-yellow-500"
                   />
+                  <span className="text-[10px] text-slate-400 font-medium">13 digits (35202-1234567-1)</span>
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">Licence Number</label>
