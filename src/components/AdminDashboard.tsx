@@ -46,11 +46,15 @@ export const AdminDashboard: React.FC = () => {
   });
 
   useEffect(() => {
-    fetchAdminData();
+    fetchAdminData(true);
+    const interval = setInterval(() => {
+      fetchAdminData(false);
+    }, 4000);
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchAdminData = async () => {
-    setLoading(true);
+  const fetchAdminData = async (isManualOrInitial = false) => {
+    if (isManualOrInitial) setLoading(true);
     try {
       const [drvRes, statsRes] = await Promise.all([
         api.getAdminDrivers(),
@@ -60,13 +64,17 @@ export const AdminDashboard: React.FC = () => {
       const driverList = drvRes?.drivers || [];
       setDrivers(driverList);
       setStats(statsRes?.stats || null);
-      
-      showToast('info', `Synced ${driverList.length} driver records directly from database.`);
+
+      if (isManualOrInitial) {
+        showToast('info', `Synced ${driverList.length} driver records directly from database.`);
+      }
     } catch (e: any) {
       console.error('Admin fetch error:', e);
-      showToast('error', 'Failed to fetch database records. Check connection.');
+      if (isManualOrInitial) {
+        showToast('error', 'Failed to fetch database records. Check connection.');
+      }
     } finally {
-      setLoading(false);
+      if (isManualOrInitial) setLoading(false);
     }
   };
 
@@ -214,7 +222,7 @@ export const AdminDashboard: React.FC = () => {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={fetchAdminData}
+              onClick={() => fetchAdminData(true)}
               disabled={loading}
               className="px-5 py-3 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-xs rounded-2xl border border-yellow-500 shadow-lg flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
             >
