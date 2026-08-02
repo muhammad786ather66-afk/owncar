@@ -370,7 +370,13 @@ export const DriverDashboard: React.FC<Props> = ({
 
                 {!isSubActive && (
                   <button
-                    onClick={() => setShowSubModal(true)}
+                    onClick={() => {
+                      if (!driver.is_approved) {
+                        alert('Your driver account is pending approval by Admin. You can purchase a plan once your account is approved.');
+                        return;
+                      }
+                      setShowSubModal(true);
+                    }}
                     className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs rounded-full shadow-md transition-all mt-1"
                   >
                     Buy Pass Now →
@@ -412,6 +418,7 @@ export const DriverDashboard: React.FC<Props> = ({
         isOpen={showSubModal}
         onClose={() => setShowSubModal(false)}
         driverId={driver.id}
+        isApproved={driver.is_approved}
         onSuccess={() => {
           checkDriverStatus();
           setSuccessMsg('Subscription active! You can now go online.');

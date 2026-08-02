@@ -1,7 +1,6 @@
 import React from 'react';
 import { User, Driver, Role } from '../types';
-import { Car, Bell, User as UserIcon, Shield, LogOut, CheckCircle, Smartphone, Home, Info, MapPin } from 'lucide-react';
-import { isPWAInstalled, promptPWAInstall } from '../utils/pwa';
+import { Car, Bell, User as UserIcon, Shield, LogOut, Home, Info, MapPin, FileText, ShieldCheck, Mail } from 'lucide-react';
 
 interface Props {
   user: User | null;
@@ -30,68 +29,76 @@ export const Navbar: React.FC<Props> = ({
   onHome,
   onOpenInfo,
 }) => {
-  const isInstalled = isPWAInstalled();
-
   return (
-    <header className="sticky top-0 z-40 bg-slate-50/90 backdrop-blur-md py-2 px-2 sm:px-4 lg:px-8">
-      <div className="max-w-7xl mx-auto min-h-[56px] sm:min-h-[64px] bg-white border border-slate-200 rounded-2xl sm:rounded-3xl flex items-center justify-between px-2.5 sm:px-6 py-2 shadow-sm gap-1.5 sm:gap-3">
-        {/* Brand Logo & Home trigger */}
-        <div className="flex items-center gap-1.5 sm:gap-2 cursor-pointer shrink-0" onClick={onHome}>
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-yellow-400 rounded-xl flex items-center justify-center font-black text-base sm:text-xl italic text-slate-900 shadow-sm shrink-0">
+    <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white py-2 px-3 sm:px-6">
+      <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2.5">
+        {/* Left: Brand Logo */}
+        <div
+          className="flex items-center gap-2 cursor-pointer group shrink-0 py-1"
+          onClick={onHome}
+        >
+          <div className="w-9 h-9 bg-yellow-400 rounded-xl flex items-center justify-center font-black text-lg italic text-slate-950 shadow-md group-hover:scale-105 transition-transform">
             AC
           </div>
-          <div className="flex items-center gap-1 sm:gap-2">
-            <span className="text-base sm:text-xl lg:text-2xl font-black tracking-tight text-slate-900">
-              Apni Car
-            </span>
-            <span className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 bg-amber-400/20 text-slate-900 font-bold text-[10px] uppercase tracking-wider rounded-full border border-amber-400/40">
-              <MapPin className="w-3 h-3 text-amber-600" />
-              Punjab
+          <div className="flex flex-col">
+            <div className="flex items-center gap-1.5">
+              <span className="text-lg sm:text-xl font-black tracking-tight text-white">
+                Apni Car
+              </span>
+              <span className="px-2 py-0.5 bg-yellow-400/20 text-yellow-300 font-extrabold text-[10px] uppercase tracking-wider rounded-full border border-yellow-400/30">
+                Punjab
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium leading-none hidden sm:block">
+              Zero Commission Rides
             </span>
           </div>
         </div>
 
-        {/* Navigation / Role Toggles */}
-        <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar py-0.5">
+        {/* Center: Primary Role Navigation & Admin Button */}
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center py-1">
+          {/* Home Button */}
           <button
             onClick={onHome}
-            className="px-2.5 py-1 sm:px-3 sm:py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-full text-[11px] sm:text-xs font-extrabold flex items-center gap-1 transition-all border border-slate-200 shrink-0"
-            title="Go to Home / Dashboard"
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-700 shrink-0"
+            title="Go to Home"
           >
-            <Home className="w-3.5 h-3.5 text-amber-600" />
+            <Home className="w-3.5 h-3.5 text-yellow-400" />
             <span className="hidden xs:inline">Home</span>
           </button>
 
+          {/* Admin Dashboard Button — PROMINENT YELLOW BADGE */}
           <button
             onClick={() => onSwitchRole('admin')}
-            className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-extrabold flex items-center gap-1 transition-all border shrink-0 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all border shrink-0 shadow-sm ${
               activeRole === 'admin'
-                ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-sm'
-                : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
+                ? 'bg-yellow-400 text-slate-950 border-yellow-500 ring-2 ring-yellow-400/30'
+                : 'bg-yellow-400/15 text-yellow-300 border-yellow-400/40 hover:bg-yellow-400/30'
             }`}
-            title="Open Admin Dashboard & Document Inspector"
+            title="Open Admin Dashboard & Driver Approvals"
           >
-            <Shield className="w-3.5 h-3.5 text-slate-950" />
-            <span>Admin</span>
+            <Shield className="w-4 h-4 text-slate-950 fill-yellow-400" />
+            <span>Admin Panel</span>
           </button>
 
-          <div className="flex items-center bg-slate-100 p-0.5 sm:p-1 rounded-full border border-slate-200 shadow-2xs shrink-0">
+          {/* Rider / Driver Role Segment */}
+          <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 shrink-0">
             <button
               onClick={() => onSwitchRole('rider')}
-              className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all ${
+              className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all ${
                 activeRole === 'rider'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-yellow-400 text-slate-950 shadow-xs'
+                  : 'text-slate-300 hover:text-white'
               }`}
             >
               Rider
             </button>
             <button
               onClick={() => onSwitchRole('driver')}
-              className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all ${
+              className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all ${
                 activeRole === 'driver'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-yellow-400 text-slate-950 shadow-xs'
+                  : 'text-slate-300 hover:text-white'
               }`}
             >
               Driver
@@ -99,52 +106,52 @@ export const Navbar: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Right Actions */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {/* PWA Install Button Header shortcut if not installed */}
-          {!isInstalled && (
+        {/* Right: Info Links & User / Login Actions */}
+        <div className="flex items-center gap-2 shrink-0 py-1">
+          {/* Quick Info Menu Link (desktop) */}
+          {onOpenInfo && (
             <button
-              onClick={() => promptPWAInstall()}
-              className="hidden lg:flex items-center gap-1 px-3 py-1.5 bg-yellow-400/20 hover:bg-yellow-400/30 text-slate-900 border border-yellow-400/40 rounded-full text-xs font-bold transition-all shrink-0"
+              onClick={() => onOpenInfo('about')}
+              className="hidden lg:flex items-center gap-1 text-slate-300 hover:text-yellow-400 text-xs font-bold px-2 py-1 transition-colors"
             >
-              <Smartphone className="w-3.5 h-3.5 text-slate-900" />
-              Install
+              <Info className="w-3.5 h-3.5 text-yellow-400" />
+              <span>Info</span>
             </button>
           )}
 
           {user ? (
-            <>
+            <div className="flex items-center gap-2">
               {/* Notifications Bell */}
               <button
                 onClick={onOpenNotifications}
-                className="relative p-2 bg-slate-100 text-slate-700 hover:text-slate-900 hover:bg-slate-200 rounded-full transition-colors border border-slate-200 shrink-0"
+                className="relative p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl transition-colors border border-slate-700"
                 title="Notifications"
               >
-                <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <Bell className="w-4 h-4 text-yellow-400" />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-yellow-400 text-slate-950 font-black text-[9px] sm:text-[10px] rounded-full flex items-center justify-center border border-white shadow-2xs">
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 text-slate-950 font-black text-[10px] rounded-full flex items-center justify-center border border-slate-900">
                     {unreadCount}
                   </span>
                 )}
               </button>
 
-              {/* User Profile Button */}
+              {/* User Profile Pill */}
               <button
                 onClick={onOpenProfile}
-                className="flex items-center gap-1.5 p-1 sm:pl-2 sm:pr-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-full transition-all shadow-2xs shrink-0"
+                className="flex items-center gap-2 p-1 pl-2 pr-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition-all"
               >
-                <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-slate-900 text-white font-bold flex items-center justify-center text-[10px] sm:text-xs uppercase overflow-hidden shrink-0">
+                <div className="w-6 h-6 rounded-lg bg-yellow-400 text-slate-950 font-black flex items-center justify-center text-xs uppercase overflow-hidden">
                   {user.avatar_url ? (
                     <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover" />
                   ) : (
                     user.full_name.charAt(0)
                   )}
                 </div>
-                <div className="text-left hidden xl:block">
-                  <p className="text-xs font-bold text-slate-900 leading-none truncate max-w-[80px]">
+                <div className="text-left hidden sm:block">
+                  <p className="text-xs font-bold text-white leading-none truncate max-w-[90px]">
                     {user.full_name.split(' ')[0]}
                   </p>
-                  <p className="text-[10px] text-amber-600 font-extrabold capitalize tracking-tight mt-0.5">
+                  <p className="text-[9px] text-yellow-400 font-extrabold capitalize tracking-tight mt-0.5">
                     {activeRole}
                   </p>
                 </div>
@@ -153,18 +160,18 @@ export const Navbar: React.FC<Props> = ({
               {/* Logout Button */}
               <button
                 onClick={onLogout}
-                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-full transition-colors border border-transparent hover:border-rose-200 shrink-0"
+                className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-xl transition-colors border border-transparent hover:border-rose-900"
                 title="Log out"
               >
-                <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <LogOut className="w-4 h-4" />
               </button>
-            </>
+            </div>
           ) : (
             <button
               onClick={onOpenAuth}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-full shadow-sm transition-all transform active:scale-95 flex items-center gap-1.5 shrink-0 whitespace-nowrap"
+              className="px-4 py-2 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all transform active:scale-95 flex items-center gap-2 shrink-0 border border-yellow-500"
             >
-              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-yellow-400 animate-pulse" />
+              <UserIcon className="w-3.5 h-3.5 fill-slate-950" />
               <span>Login / Sign Up</span>
             </button>
           )}

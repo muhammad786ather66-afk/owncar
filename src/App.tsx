@@ -200,7 +200,7 @@ export default function App() {
                 <div className="bg-white border border-slate-200 rounded-[32px] p-8 sm:p-12 shadow-sm text-center max-w-4xl mx-auto space-y-6 relative overflow-hidden">
                   <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-yellow-400/20 text-slate-900 rounded-full text-xs font-bold border border-yellow-400/40">
                     <Sparkles className="w-4 h-4 text-amber-600" />
-                    <span>Punjab's #1 Zero Commission Transport PWA</span>
+                    <span>Punjab's #1 Zero Commission Transport Platform</span>
                   </div>
 
                   <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-slate-900 tracking-tight leading-tight">
@@ -255,9 +255,9 @@ export default function App() {
                     <div className="w-12 h-12 rounded-2xl bg-slate-800 text-yellow-400 flex items-center justify-center font-black text-2xl shadow-2xs">
                       📲
                     </div>
-                    <h3 className="text-lg font-black">Installable PWA</h3>
+                    <h3 className="text-lg font-black">Instant Web Access</h3>
                     <p className="text-xs text-slate-300 leading-relaxed font-medium">
-                      Works offline, launches from your phone's home screen like a native app with zero store download size.
+                      Works seamlessly directly from your phone's browser with zero app store download required.
                     </p>
                   </div>
                 </div>
@@ -289,7 +289,7 @@ export default function App() {
           </div>
 
           <p className="font-semibold text-slate-300">
-            Apni Car © {new Date().getFullYear()} • Powered by Cloudflare Workers, Cloudflare D1 (apnicar-db) & Cloudflare R2 (apnicar-documents)
+            Apni Car © {new Date().getFullYear()} • Punjab's Premier Transport Network
           </p>
 
           <p className="text-[11px] text-slate-500 max-w-3xl mx-auto leading-relaxed">
@@ -297,9 +297,6 @@ export default function App() {
           </p>
         </div>
       </footer>
-
-      {/* Centered PWA Installation Modal */}
-      <PWAInstallModal />
 
       {/* Auth Modal */}
       <AuthModal

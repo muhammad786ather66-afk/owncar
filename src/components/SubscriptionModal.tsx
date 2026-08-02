@@ -8,10 +8,11 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   driverId: string;
+  isApproved?: boolean;
   onSuccess: () => void;
 }
 
-export const SubscriptionModal: React.FC<Props> = ({ isOpen, onClose, driverId, onSuccess }) => {
+export const SubscriptionModal: React.FC<Props> = ({ isOpen, onClose, driverId, isApproved = true, onSuccess }) => {
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>('weekly');
   const [paymentMethod, setPaymentMethod] = useState<'JazzCash' | 'Easypaisa' | 'Card'>('Easypaisa');
   const [mobileNumber, setMobileNumber] = useState('');
@@ -51,11 +52,17 @@ export const SubscriptionModal: React.FC<Props> = ({ isOpen, onClose, driverId, 
   ];
 
   const handlePurchase = async () => {
+    if (!isApproved) {
+      alert('Your driver account is pending approval by Admin. You can purchase a plan once your account is approved.');
+      setError('Account Pending Approval: Admin approval required before pass purchase.');
+      return;
+    }
+
     setIsProcessing(true);
     setError('');
 
     try {
-      // Simulate Payment Gateway Callback / Webhook Response
+      // Payment Gateway Callback
       const txRef = `TXN-${paymentMethod.toUpperCase()}-${Math.floor(100000 + Math.random() * 900000)}`;
 
       await api.purchaseSubscription(driverId, selectedPlan, paymentMethod, txRef);
@@ -97,6 +104,18 @@ export const SubscriptionModal: React.FC<Props> = ({ isOpen, onClose, driverId, 
         </div>
 
         <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+          {!isApproved && (
+            <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl text-xs font-bold text-amber-900 flex items-start gap-2.5">
+              <span className="text-base leading-none">⚠️</span>
+              <div>
+                <p className="font-black text-sm text-amber-950">Driver Account Pending Admin Approval</p>
+                <p className="font-medium text-amber-800 mt-0.5">
+                  Your driver registration details and verification documents are currently under review by Admin. You will be able to purchase a subscription pass once your account is approved.
+                </p>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium">
               {error}
@@ -200,7 +219,7 @@ export const SubscriptionModal: React.FC<Props> = ({ isOpen, onClose, driverId, 
                 : `Pay ${plans.find((p) => p.id === selectedPlan)?.price} & Go Online`}
             </button>
             <p className="text-[11px] text-slate-400 text-center mt-2">
-              Protected by SSL. Instant activation stored securely in Cloudflare D1 (apnicar-db).
+              Protected by SSL. Instant activation with zero percentage commissions.
             </p>
           </div>
         </div>

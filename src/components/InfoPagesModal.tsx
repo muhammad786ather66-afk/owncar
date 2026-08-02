@@ -149,7 +149,7 @@ export const InfoPagesModal: React.FC<Props> = ({ isOpen, onClose, defaultTab = 
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span><strong>Offline PWA Technology:</strong> Runs directly from your phone browser without consuming heavy storage.</span>
+                    <span><strong>Modern Web Experience:</strong> Fast, responsive experience that works directly on all mobile and desktop browsers.</span>
                   </li>
                 </ul>
               </div>
@@ -208,9 +208,9 @@ export const InfoPagesModal: React.FC<Props> = ({ isOpen, onClose, defaultTab = 
               </div>
 
               <div>
-                <h4 className="font-bold text-slate-900 text-sm mb-1">2. Secure Document Storage (Cloudflare R2 & D1)</h4>
+                <h4 className="font-bold text-slate-900 text-sm mb-1">2. Secure Encrypted Document Storage</h4>
                 <p className="text-slate-600">
-                  Uploaded verification images are compressed client-side and securely stored in isolated Cloudflare R2 object storage buckets with metadata indexed in encrypted D1 database tables. Documents are strictly accessible for verification and administrative compliance.
+                  Uploaded verification images are processed and securely stored in encrypted cloud vaults with metadata stored in secure database records. Documents are strictly accessible for verification and administrative compliance.
                 </p>
               </div>
 
