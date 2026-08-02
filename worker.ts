@@ -1616,10 +1616,12 @@ export default {
           let reqDriverId = '';
           let globalDocType = '';
 
+          let reqFileUrl = '';
           if (contentType.includes('multipart/form-data')) {
             const formData = await request.formData();
             globalDocType = (formData.get('doc_type') || formData.get('docType') || '') as string;
             reqDriverId = (formData.get('driver_id') || formData.get('driverId') || '') as string;
+            reqFileUrl = (formData.get('file_url') || formData.get('fileUrl') || '') as string;
 
             for (const [key, value] of formData.entries()) {
               if (value && typeof value === 'object' && typeof (value as any).arrayBuffer === 'function') {
@@ -1655,6 +1657,7 @@ export default {
             }
           }
 
+          const effectiveDriverId = targetDriverId || 'unassigned_driver';
           const uploadedResults: any[] = [];
 
           for (const item of filesToProcess) {
@@ -1668,51 +1671,56 @@ export default {
             }
 
             const filename = `${uuid}.${ext}`;
-            const objectKey = targetDriverId ? `drivers/${targetDriverId}/${docType}_${filename}` : `documents/${filename}`;
+            const objectKey = `drivers/${effectiveDriverId}/${docType}_${filename}`;
             const b64DataUrl = arrayBufferToBase64(fileData, file.type || 'image/jpeg');
 
-            let publicUrl = b64DataUrl; // Default to Base64 data URL for 100% reliable rendering
+            // Prefer Cloudinary/custom file_url if provided by client, otherwise Base64 URL
+            let publicUrl = (reqFileUrl && reqFileUrl.startsWith('http')) ? reqFileUrl : b64DataUrl;
 
             if (r2Bucket) {
               try {
                 await r2Bucket.put(objectKey, fileData, {
                   httpMetadata: { contentType: file.type || 'image/jpeg' },
                 });
-                publicUrl = `/uploads/${filename}`;
+                if (!reqFileUrl.startsWith('http')) {
+                  publicUrl = `/uploads/${filename}`;
+                }
                 console.log(`[R2 Upload Success] Saved '${file.name}' to R2 with key '${objectKey}'`);
               } catch (r2Err) {
-                console.error('[R2 Put Error - Falling back to Base64 Data URL]', r2Err);
+                console.error('[R2 Put Error - Falling back to Base64/Cloudinary Data URL]', r2Err);
               }
             }
 
             const docId = generateId('doc');
-            if (env.DB && targetDriverId) {
+            if (env.DB) {
               await saveDriverDocToD1(
                 env,
                 docId,
-                targetDriverId,
+                effectiveDriverId,
                 docType,
                 objectKey,
-                b64DataUrl, // Save complete Base64 data URL in D1 database
+                publicUrl, // Save public Cloudinary or Base64 data URL into D1 database
                 file.name || filename,
                 file.type || 'image/jpeg',
                 fileData.byteLength
               );
-              console.log(`[D1 Insert Success] Inserted document row '${docId}' for driver '${targetDriverId}'`);
+              console.log(`[D1 Insert Success] Inserted document row '${docId}' for driver '${effectiveDriverId}'`);
 
-              const colMap: Record<string, string> = {
-                cnic_front: 'cnic_front_url',
-                cnic_back: 'cnic_back_url',
-                licence: 'licence_doc_url',
-                licence_front: 'licence_doc_url',
-                registration: 'registration_doc_url',
-                reg: 'registration_doc_url',
-              };
-              if (colMap[docType]) {
-                await env.DB.prepare(`UPDATE drivers SET ${colMap[docType]} = ? WHERE id = ?`)
-                  .bind(b64DataUrl, targetDriverId)
-                  .run()
-                  .catch(() => {});
+              if (targetDriverId) {
+                const colMap: Record<string, string> = {
+                  cnic_front: 'cnic_front_url',
+                  cnic_back: 'cnic_back_url',
+                  licence: 'licence_doc_url',
+                  licence_front: 'licence_doc_url',
+                  registration: 'registration_doc_url',
+                  reg: 'registration_doc_url',
+                };
+                if (colMap[docType]) {
+                  await env.DB.prepare(`UPDATE drivers SET ${colMap[docType]} = ? WHERE id = ?`)
+                    .bind(publicUrl, targetDriverId)
+                    .run()
+                    .catch(() => {});
+                }
               }
             }
 

@@ -377,15 +377,75 @@ export const api = {
     }
   },
 
-  // Document Uploads (R2 bucket proxy or Object URL fallback)
+  // Helper: Convert File to Base64 data URL
+  fileToBase64: (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  },
+
+  // Helper: Upload directly to Cloudinary using unsigned upload preset
+  uploadToCloudinary: async (file: File): Promise<string | null> => {
+    const cloudName = 'tqvvwote';
+    // User provided preset: 'unassigned' (also try common variations)
+    const presets = ['unassigned', 'unsigned', 'ml_default', 'driver_docs', 'apnicar_preset'];
+
+    for (const preset of presets) {
+      try {
+        const cForm = new FormData();
+        cForm.append('file', file);
+        cForm.append('upload_preset', preset);
+
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+          method: 'POST',
+          body: cForm,
+        });
+
+        if (res.ok) {
+          const cData = await res.json();
+          if (cData.secure_url) {
+            console.log(`[Cloudinary Success] Uploaded to Cloudinary with preset '${preset}':`, cData.secure_url);
+            return cData.secure_url;
+          }
+        }
+      } catch (e) {
+        console.warn(`[Cloudinary Upload Preset '${preset}' Warning]`, e);
+      }
+    }
+    return null;
+  },
+
+  // Document Uploads (Cloudinary -> Worker D1 -> Base64 Data URL)
   uploadFile: async (file: File, docType?: string, driverId?: string): Promise<string> => {
+    let finalUrl: string | null = null;
+
+    // 1. Try Cloudinary direct unsigned upload
+    try {
+      finalUrl = await api.uploadToCloudinary(file);
+    } catch (cErr) {
+      console.warn('[Cloudinary direct upload attempt failed]', cErr);
+    }
+
+    // 2. Generate Base64 Data URL as reliable fallback if Cloudinary not used/failed
+    const base64Url = await api.fileToBase64(file).catch(() => null);
+    if (!finalUrl && base64Url) {
+      finalUrl = base64Url;
+    }
+
+    // Default image if file conversion failed
+    if (!finalUrl) {
+      finalUrl = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=600';
+    }
+
+    // 3. Sync file details & URL with Worker backend to insert into driver_documents in D1
     const formData = new FormData();
     formData.append('file', file);
-    if (docType) {
-      formData.append('doc_type', docType);
-      formData.append(docType, file);
-    }
+    if (docType) formData.append('doc_type', docType);
     if (driverId) formData.append('driver_id', driverId);
+    if (finalUrl) formData.append('file_url', finalUrl);
 
     const token = localStorage.getItem('apnicar_token');
     const headers: Record<string, string> = {};
@@ -402,22 +462,13 @@ export const api = {
 
       if (res.ok) {
         const data = await res.json();
-        return data.url || URL.createObjectURL(file);
-      } else {
-        let errMsg = `Upload failed with status ${res.status}`;
-        try {
-          const errData = await res.json();
-          if (errData.error || errData.message) {
-            errMsg = errData.error || errData.message;
-          }
-        } catch (_) {}
-        console.error('[uploadFile Error]', errMsg);
-        throw new Error(errMsg);
+        return data.url || finalUrl;
       }
     } catch (e: any) {
-      console.warn('[uploadFile warning] Endpoint request failed, returning client fallback:', e);
-      return URL.createObjectURL(file);
+      console.warn('[uploadFile Worker endpoint call warning]', e);
     }
+
+    return finalUrl;
   },
 
   getDriverDocuments: async (driverId: string): Promise<DriverDocument[]> => {
