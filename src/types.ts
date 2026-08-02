@@ -14,39 +14,22 @@ export interface User {
   created_at?: string;
 }
 
-export interface Driver {
-  id: string;
-  user_id: string;
-  cnic: string;
-  driving_licence: string;
-  vehicle_type: VehicleType;
-  vehicle_brand: string;
-  vehicle_model: string;
-  vehicle_colour: string;
-  vehicle_reg_number: string;
-  is_approved: boolean;
-  cnic_front_url?: string;
-  cnic_back_url?: string;
-  licence_doc_url?: string;
-  registration_doc_url?: string;
-  is_online: boolean;
-  current_lat: number;
-  current_lng: number;
-  rating: number;
-  total_rides: number;
-  active_subscription?: Subscription | null;
-  user?: User;
-}
-
 export interface DriverDocument {
   id: string;
   driver_id: string;
-  doc_type: 'cnic_front' | 'cnic_back' | 'licence' | 'registration' | string;
-  file_key: string;
-  file_url: string;
+  document_type?: string;
+  document_url?: string;
+  public_id?: string;
+  doc_type?: string;
+  file_key?: string;
+  file_url?: string;
   original_filename?: string;
   content_type?: string;
   size?: number;
+  verification_status?: 'pending' | 'approved' | 'rejected';
+  rejection_reason?: string;
+  verified_by?: string;
+  verified_at?: string;
   created_at?: string;
 }
 
@@ -62,6 +45,54 @@ export interface Subscription {
   expires_at: string;
   payment_tx_ref: string;
   created_at: string;
+}
+
+export interface Driver {
+  id: string;
+  user_id: string;
+  cnic: string;
+  driving_licence: string;
+  vehicle_type: VehicleType;
+  vehicle_brand: string;
+  vehicle_model: string;
+  vehicle_colour: string;
+  vehicle_reg_number: string;
+  is_approved: boolean;
+  rejection_reason?: string;
+  district?: string;
+  cnic_front_url?: string;
+  cnic_back_url?: string;
+  licence_doc_url?: string;
+  registration_doc_url?: string;
+  vehicle_photo_url?: string;
+  is_online: boolean;
+  current_lat?: number;
+  current_lng?: number;
+  rating: number;
+  total_rides: number;
+  active_subscription?: Subscription | null;
+  documents?: DriverDocument[];
+  user?: User;
+  created_at?: string;
+}
+
+export interface AdminStats {
+  totalRiders: number;
+  totalDrivers: number;
+  pendingDrivers: number;
+  approvedDrivers: number;
+  rejectedDrivers: number;
+  totalTrips: number;
+  activeDrivers: number;
+  activeSubscriptions: number;
+  revenue: number;
+  recentRegistrations?: Array<{
+    id: string;
+    full_name: string;
+    role: string;
+    mobile_number: string;
+    created_at: string;
+  }>;
 }
 
 export type TripStatus =

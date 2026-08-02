@@ -1,4 +1,4 @@
-import { User, Driver, Subscription, Trip, NotificationItem, DriverDocument } from '../types';
+import { User, Driver, Subscription, Trip, NotificationItem, DriverDocument, AdminStats } from '../types';
 
 const DEFAULT_API_BASE = 'https://apnicar-backend.muhammad786-ather66.workers.dev';
 const API_BASE = (
@@ -387,10 +387,9 @@ export const api = {
     });
   },
 
-  // Helper: Upload directly to Cloudinary using unsigned upload preset
-  uploadToCloudinary: async (file: File): Promise<string | null> => {
+  // Helper: Upload directly to Cloudinary using unsigned upload preset (returns secure_url and public_id)
+  uploadToCloudinaryDetailed: async (file: File): Promise<{ secure_url: string; public_id: string } | null> => {
     const cloudName = 'tqvvwote';
-    // User provided preset: 'apnicar_docs' (from Cloudinary dashboard screenshot)
     const presets = ['apnicar_docs', 'unassigned', 'unsigned', 'ml_default', 'driver_docs', 'apnicar_preset'];
     const endpoints = [
       `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
@@ -413,8 +412,11 @@ export const api = {
           const cData = await res.json().catch(() => null);
 
           if (res.ok && cData?.secure_url) {
-            console.log(`%c[Cloudinary Success] Saved to Cloudinary! URL: ${cData.secure_url}`, 'color: green; font-weight: bold;');
-            return cData.secure_url;
+            console.log(`%c[Cloudinary Success] Saved to Cloudinary! URL: ${cData.secure_url}, Public ID: ${cData.public_id}`, 'color: green; font-weight: bold;');
+            return {
+              secure_url: cData.secure_url,
+              public_id: cData.public_id || `cloudinary_${Date.now()}`,
+            };
           } else if (cData?.error?.message) {
             console.warn(`[Cloudinary Response Warning] Status: ${res.status}, Preset: '${preset}', Message: "${cData.error.message}"`);
           }
@@ -424,6 +426,11 @@ export const api = {
       }
     }
     return null;
+  },
+
+  uploadToCloudinary: async (file: File): Promise<string | null> => {
+    const res = await api.uploadToCloudinaryDetailed(file);
+    return res ? res.secure_url : null;
   },
 
   // Document Uploads (Cloudinary -> Worker D1 -> Base64 Data URL)
@@ -563,60 +570,91 @@ export const api = {
   },
 
   getAdminDriverById: async (id: string) => {
-    return request<{ driver: Driver }>(`/api/admin/drivers/${id}`);
+    return request<{ success: boolean; driver: Driver; documents?: DriverDocument[]; trips?: any[]; subscription?: any; ratings?: any[] }>(`/api/admin/driver/${id}`);
   },
 
-  approveDriver: async (driverId: string, approve: boolean) => {
+  getAdminDriverDocuments: async (driverId: string) => {
+    return request<{ documents: DriverDocument[] }>(`/api/admin/driver/${driverId}/documents`);
+  },
+
+  approveDriver: async (driverId: string, force = false) => {
     try {
-      if (approve) {
-        return await request<{ success: boolean; message: string }>(`/api/admin/drivers/${driverId}/approve`, {
-          method: 'PATCH',
-        });
-      } else {
-        return await request<{ success: boolean; message: string }>(`/api/admin/drivers/${driverId}/reject`, {
-          method: 'PATCH',
-          body: JSON.stringify({ rejection_reason: 'Admin rejected application' }),
-        });
-      }
-    } catch (e) {
-      return { success: false, message: 'Failed to update driver status' };
+      return await request<{ success: boolean; message: string }>(`/api/admin/driver/${driverId}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ force }),
+      });
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Failed to approve driver account' };
     }
   },
 
   rejectDriver: async (driverId: string, reason?: string) => {
     try {
-      return await request<{ success: boolean; message: string }>(`/api/admin/drivers/${driverId}/reject`, {
-        method: 'PATCH',
-        body: JSON.stringify({ rejection_reason: reason || 'Rejected by Admin' }),
+      return await request<{ success: boolean; message: string }>(`/api/admin/driver/${driverId}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ rejection_reason: reason || 'Verification standards not met' }),
       });
-    } catch (e) {
-      return { success: false, message: 'Failed to reject driver' };
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Failed to reject driver' };
+    }
+  },
+
+  suspendDriver: async (driverId: string, reason?: string) => {
+    try {
+      return await request<{ success: boolean; message: string }>(`/api/admin/driver/${driverId}/suspend`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason || 'Suspended by Administrator' }),
+      });
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Failed to suspend driver' };
+    }
+  },
+
+  verifyDocument: async (driverId: string, docId: string, status: 'approved' | 'rejected', rejectionReason?: string) => {
+    try {
+      return await request<{ success: boolean; message: string; verification_status: string }>(
+        `/api/admin/driver/${driverId}/document/${docId}/verify`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            status,
+            rejection_reason: status === 'rejected' ? (rejectionReason || 'Document verification rejected') : undefined,
+            verified_by: 'Admin Portal',
+          }),
+        }
+      );
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Failed to verify document' };
     }
   },
 
   deleteDriver: async (driverId: string) => {
     try {
-      return await request<{ success: boolean; message: string }>(`/api/admin/drivers/${driverId}`, {
+      return await request<{ success: boolean; message: string }>(`/api/admin/driver/${driverId}`, {
         method: 'DELETE',
       });
-    } catch (e) {
-      return { success: false, message: 'Failed to delete driver record' };
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Failed to delete driver record' };
     }
   },
 
   getAdminStats: async () => {
     try {
-      const res = await request<{ stats: any }>('/api/admin/stats');
+      const res = await request<{ stats: AdminStats }>('/api/admin/stats');
       if (res && res.stats) return res;
     } catch (e) {}
 
     return {
       stats: {
+        totalRiders: 0,
         totalDrivers: 0,
         pendingDrivers: 0,
-        totalRiders: 0,
-        completedTrips: 0,
-        subscriptionRevenue: 0,
+        approvedDrivers: 0,
+        rejectedDrivers: 0,
+        totalTrips: 0,
+        activeDrivers: 0,
+        activeSubscriptions: 0,
+        revenue: 0,
       },
     };
   },

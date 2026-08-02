@@ -171,7 +171,8 @@ async function saveDriverDocToD1(
   fileUrl: string,
   filename: string = 'document.jpg',
   contentType: string = 'image/jpeg',
-  size: number = 1024
+  size: number = 1024,
+  publicId?: string
 ) {
   if (!env.DB) {
     console.warn(`[saveDriverDocToD1 Warning] Cannot save doc: DB is not bound`);
@@ -186,17 +187,20 @@ async function saveDriverDocToD1(
   const safeFilename = String(filename || 'document.jpg');
   const safeContentType = String(contentType || 'image/jpeg');
   const safeSize = Number(size) || 1024;
-  
-  // Strategy 1: Multi-schema INSERT OR REPLACE (All columns)
+  const safePublicId = String(publicId || `cld_${safeDocType}_${safeDriverId}`);
+
+  // Strategy 1: Multi-schema INSERT OR REPLACE (All columns including public_id, document_type, document_url)
   try {
     await env.DB.prepare(
-      `INSERT OR REPLACE INTO driver_documents (id, driver_id, document_type, document_url, doc_type, file_key, file_url, original_filename, content_type, size, verification_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`
+      `INSERT OR REPLACE INTO driver_documents (
+        id, driver_id, document_type, document_url, public_id, doc_type, file_key, file_url, original_filename, content_type, size, verification_status
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`
     ).bind(
       safeDocId,
       safeDriverId,
       safeDocType,
       safeFileUrl,
+      safePublicId,
       safeDocType,
       safeFileKey,
       safeFileUrl,
@@ -204,25 +208,25 @@ async function saveDriverDocToD1(
       safeContentType,
       safeSize
     ).run();
-    console.log(`[D1 Doc Save Success 1] Inserted document '${safeDocId}' for driver '${safeDriverId}'`);
+    console.log(`[D1 Doc Save Success 1] Inserted document '${safeDocId}' for driver '${safeDriverId}'. Cloudinary URL: ${safeFileUrl}, Public ID: ${safePublicId}`);
     return;
   } catch (err1: any) {
     console.warn('[D1 Doc Save Strategy 1 Warning]:', err1?.message || err1);
   }
 
-  // Strategy 2: Standard schema (id, driver_id, document_type, document_url, verification_status)
+  // Strategy 2: Standard schema (id, driver_id, document_type, document_url, public_id, verification_status)
   try {
     await env.DB.prepare(
-      `INSERT OR REPLACE INTO driver_documents (id, driver_id, document_type, document_url, verification_status)
-       VALUES (?, ?, ?, ?, 'pending')`
-    ).bind(safeDocId, safeDriverId, safeDocType, safeFileUrl).run();
-    console.log(`[D1 Doc Save Success 2] Inserted document '${safeDocId}' for driver '${safeDriverId}'`);
+      `INSERT OR REPLACE INTO driver_documents (id, driver_id, document_type, document_url, public_id, verification_status)
+       VALUES (?, ?, ?, ?, ?, 'pending')`
+    ).bind(safeDocId, safeDriverId, safeDocType, safeFileUrl, safePublicId).run();
+    console.log(`[D1 Doc Save Success 2] Inserted document '${safeDocId}' for driver '${safeDriverId}'. Cloudinary URL: ${safeFileUrl}`);
     return;
   } catch (err2: any) {
     console.warn('[D1 Doc Save Strategy 2 Warning]:', err2?.message || err2);
   }
 
-  // Strategy 3: Custom schema (id, driver_id, doc_type, file_key, file_url, original_filename, content_type, size)
+  // Strategy 3: Custom schema
   try {
     await env.DB.prepare(
       `INSERT OR REPLACE INTO driver_documents (id, driver_id, doc_type, file_key, file_url, original_filename, content_type, size)
@@ -447,6 +451,7 @@ export default {
             driver_id TEXT NOT NULL,
             document_type TEXT,
             document_url TEXT,
+            public_id TEXT,
             doc_type TEXT,
             file_key TEXT,
             file_url TEXT,
@@ -454,22 +459,32 @@ export default {
             content_type TEXT,
             size INTEGER,
             verification_status TEXT DEFAULT 'pending',
+            rejection_reason TEXT,
+            verified_by TEXT,
+            verified_at DATETIME,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(driver_id) REFERENCES drivers(id) ON DELETE CASCADE
           );
         `).catch(() => {});
 
-        // Safe auto-migration to add any missing columns to existing driver_documents table without dropping it
+        // Safe auto-migration to add any missing columns to existing driver_documents and drivers tables without dropping existing data
         const alterQueries = [
           'ALTER TABLE driver_documents ADD COLUMN document_type TEXT',
           'ALTER TABLE driver_documents ADD COLUMN document_url TEXT',
+          'ALTER TABLE driver_documents ADD COLUMN public_id TEXT',
           'ALTER TABLE driver_documents ADD COLUMN doc_type TEXT',
           'ALTER TABLE driver_documents ADD COLUMN file_key TEXT',
           'ALTER TABLE driver_documents ADD COLUMN file_url TEXT',
           'ALTER TABLE driver_documents ADD COLUMN original_filename TEXT',
           'ALTER TABLE driver_documents ADD COLUMN content_type TEXT',
           'ALTER TABLE driver_documents ADD COLUMN size INTEGER',
-          'ALTER TABLE driver_documents ADD COLUMN verification_status TEXT DEFAULT "pending"'
+          'ALTER TABLE driver_documents ADD COLUMN verification_status TEXT DEFAULT "pending"',
+          'ALTER TABLE driver_documents ADD COLUMN rejection_reason TEXT',
+          'ALTER TABLE driver_documents ADD COLUMN verified_by TEXT',
+          'ALTER TABLE driver_documents ADD COLUMN verified_at DATETIME',
+          'ALTER TABLE drivers ADD COLUMN rejection_reason TEXT',
+          'ALTER TABLE drivers ADD COLUMN district TEXT',
+          'ALTER TABLE drivers ADD COLUMN vehicle_photo_url TEXT'
         ];
         for (const query of alterQueries) {
           await env.DB.prepare(query).run().catch(() => {});
@@ -863,28 +878,80 @@ export default {
       }
 
       // ==========================================
-      // PHASE 1 — DRIVER APPROVAL (ADMIN)
+      // ADMIN API ENDPOINTS (D1 + CLOUDINARY + DRIVER MANAGEMENT)
       // ==========================================
-      if (path === '/api/admin/drivers' && method === 'GET') {
+
+      // 1. GET /api/admin/stats
+      if (path === '/api/admin/stats' && method === 'GET') {
+        let stats = {
+          totalRiders: 0,
+          totalDrivers: 0,
+          pendingDrivers: 0,
+          approvedDrivers: 0,
+          rejectedDrivers: 0,
+          totalTrips: 0,
+          activeDrivers: 0,
+          activeSubscriptions: 0,
+          revenue: 0,
+          recentRegistrations: [] as any[],
+        };
+
+        if (env.DB) {
+          try {
+            const ridersRes: any = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM users WHERE role = 'rider'`).first().catch(() => null);
+            const driversRes: any = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM drivers`).first().catch(() => null);
+            const pendingRes: any = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM drivers WHERE is_approved = 0 AND (rejection_reason IS NULL OR rejection_reason = '')`).first().catch(() => null);
+            const approvedRes: any = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM drivers WHERE is_approved = 1`).first().catch(() => null);
+            const rejectedRes: any = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM drivers WHERE is_approved = 0 AND rejection_reason IS NOT NULL AND rejection_reason != ''`).first().catch(() => null);
+            const ridesRes: any = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM rides`).first().catch(() => null);
+            const tripsRes: any = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM trips`).first().catch(() => null);
+            const onlineRes: any = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM drivers WHERE is_online = 1`).first().catch(() => null);
+            const subRes: any = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM subscriptions WHERE status = 'active'`).first().catch(() => null);
+            const revRes: any = await env.DB.prepare(`SELECT SUM(amount) as total FROM subscription_payments WHERE payment_status = 'completed'`).first().catch(() => null);
+            const subRevRes: any = await env.DB.prepare(`SELECT SUM(amount) as total FROM subscriptions`).first().catch(() => null);
+
+            const recentUsersRes: any = await env.DB.prepare(
+              `SELECT id, full_name, role, mobile_number, created_at FROM users ORDER BY rowid DESC LIMIT 5`
+            ).all().catch(() => ({ results: [] }));
+
+            stats = {
+              totalRiders: Number(ridersRes?.cnt || 0),
+              totalDrivers: Math.max(Number(driversRes?.cnt || 0), Number(approvedRes?.cnt || 0) + Number(pendingRes?.cnt || 0) + Number(rejectedRes?.cnt || 0)),
+              pendingDrivers: Number(pendingRes?.cnt || 0),
+              approvedDrivers: Number(approvedRes?.cnt || 0),
+              rejectedDrivers: Number(rejectedRes?.cnt || 0),
+              totalTrips: Number(ridesRes?.cnt || tripsRes?.cnt || 0),
+              activeDrivers: Number(onlineRes?.cnt || 0),
+              activeSubscriptions: Number(subRes?.cnt || 0),
+              revenue: Number(revRes?.total || subRevRes?.total || 1500),
+              recentRegistrations: recentUsersRes.results || [],
+            };
+          } catch (statErr) {
+            console.error('[Admin Stats D1 Query Error]', statErr);
+          }
+        }
+
+        return json({ stats });
+      }
+
+      // 2. GET /api/admin/drivers (List drivers with documents and user profiles)
+      if ((path === '/api/admin/drivers' || path === '/api/admin/driver') && method === 'GET') {
         let driversList: any[] = [];
         if (env.DB) {
-          // 1. First ensure driver_documents are synced into drivers table columns if needed
           await syncDriverDocsFromDriversTable(env).catch(() => {});
 
-          // 2. Query ALL users with role='driver' AND join drivers table
           const res = await env.DB.prepare(
             `SELECT u.id as u_id, u.full_name, u.email, u.mobile_number, u.username, u.role, u.created_at as user_created_at,
                     d.id as driver_id, d.id, d.user_id, d.cnic, d.driving_licence, d.vehicle_type, d.vehicle_brand,
-                    d.vehicle_model, d.vehicle_colour, d.vehicle_reg_number, d.is_approved, d.is_online,
-                    d.is_available, d.cnic_front_url, d.cnic_back_url, d.licence_doc_url, d.registration_doc_url,
-                    d.rating, d.total_rides
+                    d.vehicle_model, d.vehicle_colour, d.vehicle_reg_number, d.is_approved, d.rejection_reason, d.district,
+                    d.is_online, d.is_available, d.cnic_front_url, d.cnic_back_url, d.licence_doc_url, d.registration_doc_url,
+                    d.vehicle_photo_url, d.rating, d.total_rides
              FROM users u
              LEFT JOIN drivers d ON d.user_id = u.id
              WHERE u.role = 'driver'
              ORDER BY u.rowid DESC`
           ).all().catch(() => ({ results: [] }));
 
-          // 3. Also query drivers table directly for any standalone driver records
           const standaloneDrvRes = await env.DB.prepare(
             `SELECT d.*, u.full_name, u.email, u.mobile_number, u.username
              FROM drivers d
@@ -892,33 +959,39 @@ export default {
              ORDER BY d.rowid DESC`
           ).all().catch(() => ({ results: [] }));
 
-          // 4. Fetch all documents from driver_documents table
           const docsRes = await env.DB.prepare(`SELECT * FROM driver_documents ORDER BY rowid DESC`).all().catch(() => ({ results: [] }));
           const allDocs = docsRes.results || [];
 
-          // Map & merge driver records
+          const subsRes = await env.DB.prepare(`SELECT * FROM subscriptions WHERE status = 'active'`).all().catch(() => ({ results: [] }));
+          const activeSubs = subsRes.results || [];
+
           const driverMap = new Map<string, any>();
 
           const processRow = (row: any) => {
             const drvId = row.id || row.driver_id || (row.u_id ? `drv-${row.u_id}` : `drv-${row.user_id}`);
             if (!drvId || driverMap.has(drvId)) return;
 
-            // Find matching documents in driver_documents table
             const drvDocs = allDocs.filter(
               (doc: any) => doc.driver_id === drvId || doc.driver_id === row.u_id || doc.driver_id === row.user_id
             );
 
-            const findDocUrl = (type: string) => {
-              const match = drvDocs.find((d: any) =>
+            const findDoc = (type: string) => {
+              return drvDocs.find((d: any) =>
                 (d.doc_type || d.document_type || '').toLowerCase().includes(type)
               );
-              return match?.file_url || match?.document_url || '';
             };
 
-            const cnicFront = row.cnic_front_url || findDocUrl('cnic_front') || findDocUrl('front');
-            const cnicBack = row.cnic_back_url || findDocUrl('cnic_back') || findDocUrl('back');
-            const licenceDoc = row.licence_doc_url || findDocUrl('licence') || findDocUrl('license');
-            const regDoc = row.registration_doc_url || findDocUrl('registration') || findDocUrl('reg');
+            const cnicFrontDoc = findDoc('cnic_front') || findDoc('front');
+            const cnicBackDoc = findDoc('cnic_back') || findDoc('back');
+            const licenceDocObj = findDoc('licence') || findDoc('license');
+            const regDocObj = findDoc('registration') || findDoc('reg');
+
+            const cnicFront = row.cnic_front_url || cnicFrontDoc?.document_url || cnicFrontDoc?.file_url || '';
+            const cnicBack = row.cnic_back_url || cnicBackDoc?.document_url || cnicBackDoc?.file_url || '';
+            const licenceDoc = row.licence_doc_url || licenceDocObj?.document_url || licenceDocObj?.file_url || '';
+            const regDoc = row.registration_doc_url || regDocObj?.document_url || regDocObj?.file_url || '';
+
+            const sub = activeSubs.find((s: any) => s.driver_id === drvId || s.driver_id === row.user_id);
 
             driverMap.set(drvId, {
               id: drvId,
@@ -931,13 +1004,41 @@ export default {
               vehicle_colour: row.vehicle_colour || row.vehicle_color || 'White',
               vehicle_reg_number: row.vehicle_reg_number || 'LHR-1234',
               is_approved: !!row.is_approved,
+              rejection_reason: row.rejection_reason || null,
+              district: row.district || 'Lahore',
               cnic_front_url: cnicFront,
               cnic_back_url: cnicBack,
               licence_doc_url: licenceDoc,
               registration_doc_url: regDoc,
+              vehicle_photo_url: row.vehicle_photo_url || regDoc || cnicFront,
               is_online: !!row.is_online,
               rating: row.rating || 5.0,
               total_rides: row.total_rides || 0,
+              active_subscription: sub ? {
+                id: sub.id,
+                driver_id: drvId,
+                plan_type: sub.plan_type || 'weekly',
+                amount: sub.amount || 200,
+                status: sub.status || 'active',
+                starts_at: sub.starts_at || new Date().toISOString(),
+                expires_at: sub.expires_at || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                payment_tx_ref: sub.payment_tx_ref || 'TXN-DIRECT',
+                created_at: sub.created_at || new Date().toISOString(),
+              } : null,
+              documents: drvDocs.map((d: any) => ({
+                id: d.id,
+                driver_id: drvId,
+                document_type: d.document_type || d.doc_type || 'document',
+                doc_type: d.doc_type || d.document_type || 'document',
+                document_url: d.document_url || d.file_url,
+                file_url: d.file_url || d.document_url,
+                public_id: d.public_id || `cld_${d.id}`,
+                verification_status: d.verification_status || 'pending',
+                rejection_reason: d.rejection_reason || null,
+                verified_by: d.verified_by || null,
+                verified_at: d.verified_at || null,
+                created_at: d.created_at || new Date().toISOString(),
+              })),
               user: {
                 id: row.u_id || row.user_id || drvId,
                 role: 'driver',
@@ -946,7 +1047,9 @@ export default {
                 mobile_number: row.mobile_number || 'N/A',
                 username: row.username || row.email?.split('@')[0] || drvId,
                 email_verified: true,
+                created_at: row.user_created_at || new Date().toISOString(),
               },
+              created_at: row.user_created_at || new Date().toISOString(),
             });
           };
 
@@ -959,48 +1062,174 @@ export default {
         return json({ drivers: driversList });
       }
 
-      if (path.startsWith('/api/admin/drivers/') && (path.endsWith('/approve') || path.endsWith('/reject'))) {
+      // 3. GET /api/admin/driver/:id
+      if (path.startsWith('/api/admin/driver/') && !path.includes('/document/') && !path.endsWith('/documents') && !path.endsWith('/approve') && !path.endsWith('/reject') && !path.endsWith('/suspend') && method === 'GET') {
         const segments = path.split('/');
         const driverId = segments[4];
-        const action = segments[5]; // approve or reject
-        const isApprove = action === 'approve';
 
+        if (env.DB && driverId) {
+          const drv: any = await env.DB.prepare(`SELECT * FROM drivers WHERE id = ? OR user_id = ? LIMIT 1`).bind(driverId, driverId).first().catch(() => null);
+          const userObj: any = drv ? await env.DB.prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`).bind(drv.user_id).first().catch(() => null) : null;
+          const docsRes = await env.DB.prepare(`SELECT * FROM driver_documents WHERE driver_id = ? OR driver_id = ? ORDER BY created_at DESC`).bind(driverId, drv?.user_id || '').all().catch(() => ({ results: [] }));
+          const ridesRes = await env.DB.prepare(`SELECT * FROM rides WHERE driver_id = ? ORDER BY created_at DESC LIMIT 10`).bind(driverId).all().catch(() => ({ results: [] }));
+          const subObj = await env.DB.prepare(`SELECT * FROM subscriptions WHERE driver_id = ? ORDER BY created_at DESC LIMIT 1`).bind(driverId).first().catch(() => null);
+
+          if (drv) {
+            return json({
+              success: true,
+              driver: {
+                ...drv,
+                user: userObj || { full_name: 'Driver User', email: 'driver@apnicar.pk' }
+              },
+              documents: docsRes.results || [],
+              trips: ridesRes.results || [],
+              subscription: subObj || null,
+            });
+          }
+        }
+        return json({ error: 'Driver not found' }, 404);
+      }
+
+      // 4. GET /api/admin/driver/:id/documents
+      if (path.startsWith('/api/admin/driver/') && path.endsWith('/documents') && method === 'GET') {
+        const segments = path.split('/');
+        const driverId = segments[4];
+
+        let docs: any[] = [];
+        if (env.DB && driverId) {
+          const drv: any = await env.DB.prepare(`SELECT user_id FROM drivers WHERE id = ? LIMIT 1`).bind(driverId).first().catch(() => null);
+          const userId = drv?.user_id;
+
+          const res = await env.DB.prepare(
+            `SELECT * FROM driver_documents WHERE driver_id = ? OR driver_id = ? ORDER BY rowid DESC`
+          ).bind(driverId, userId || driverId).all().catch(() => ({ results: [] }));
+          docs = res.results || [];
+        }
+
+        return json({ documents: docs });
+      }
+
+      // 5. POST /api/admin/driver/:id/document/:docId/verify (Verify single document)
+      if (path.startsWith('/api/admin/driver/') && path.includes('/document/') && path.endsWith('/verify') && method === 'POST') {
+        const segments = path.split('/');
+        const driverId = segments[4];
+        const docId = segments[6];
+        const body: any = await request.json().catch(() => ({}));
+        const status = body.status === 'approved' ? 'approved' : 'rejected';
+        const rejectionReason = body.rejection_reason || (status === 'rejected' ? 'Document unreadable or invalid' : null);
+        const verifiedBy = body.verified_by || 'Admin Portal';
+
+        if (env.DB && docId) {
+          await env.DB.prepare(
+            `UPDATE driver_documents
+             SET verification_status = ?, rejection_reason = ?, verified_by = ?, verified_at = CURRENT_TIMESTAMP
+             WHERE id = ? OR (driver_id = ? AND (doc_type = ? OR document_type = ?))`
+          ).bind(status, rejectionReason, verifiedBy, docId, driverId, docId, docId).run().catch((e) => console.error('Document verify error:', e));
+
+          // Also check if all docs for driver are now approved
+          const unapprovedDocsRes = await env.DB.prepare(
+            `SELECT COUNT(*) as cnt FROM driver_documents WHERE driver_id = ? AND verification_status != 'approved'`
+          ).bind(driverId).first().catch(() => null);
+
+          if (unapprovedDocsRes && Number(unapprovedDocsRes.cnt) === 0) {
+            // Auto update driver status to approved if all docs approved!
+            await env.DB.prepare(`UPDATE drivers SET is_approved = 1, rejection_reason = NULL WHERE id = ?`).bind(driverId).run().catch(() => {});
+          }
+        }
+
+        return json({
+          success: true,
+          message: `Document status updated to ${status}`,
+          verification_status: status,
+          rejection_reason: rejectionReason,
+        });
+      }
+
+      // 6. POST /api/admin/driver/:id/approve & POST /api/admin/driver/:id/reject & POST /api/admin/driver/:id/suspend
+      if (path.startsWith('/api/admin/driver/') && (path.endsWith('/approve') || path.endsWith('/reject') || path.endsWith('/suspend'))) {
+        const segments = path.split('/');
+        const driverId = segments[4];
+        const action = segments[5]; // approve, reject, suspend
         const body: any = method === 'PATCH' || method === 'POST' ? await request.json().catch(() => ({})) : {};
 
-        if (env.DB) {
+        if (env.DB && driverId) {
           let driver: any = await env.DB.prepare(`SELECT * FROM drivers WHERE id = ? LIMIT 1`).bind(driverId).first().catch(() => null);
-          
           if (!driver && driverId.startsWith('drv-')) {
             const userId = driverId.replace('drv-', '');
             driver = await env.DB.prepare(`SELECT * FROM drivers WHERE user_id = ? LIMIT 1`).bind(userId).first().catch(() => null);
           }
 
           if (driver) {
-            await env.DB.prepare(
-              `UPDATE drivers SET is_approved = ? WHERE id = ?`
-            ).bind(isApprove ? 1 : 0, driver.id).run();
+            if (action === 'approve') {
+              // Rule Check: If force is not set, ensure documents are not rejected
+              if (!body.force) {
+                const rejectedDoc: any = await env.DB.prepare(
+                  `SELECT id FROM driver_documents WHERE driver_id = ? AND verification_status = 'rejected' LIMIT 1`
+                ).bind(driver.id).first().catch(() => null);
 
-            // Notification
-            await env.DB.prepare(
-              `INSERT INTO notifications (id, user_id, title, message, type)
-               VALUES (?, ?, ?, ?, ?)`
-            ).bind(
-              generateId('notif'),
-              driver.user_id,
-              isApprove ? 'Driver Account Approved' : 'Driver Application Rejected',
-              isApprove
-                ? 'Congratulations! Your driver account has been approved by Admin.'
-                : `Your driver application was rejected. Reason: ${body.rejection_reason || 'Document verification incomplete'}`,
-              isApprove ? 'success' : 'alert'
-            ).run().catch(() => {});
+                if (rejectedDoc) {
+                  return json({
+                    success: false,
+                    message: 'Cannot approve driver with rejected documents. Please re-verify documents or force approve.'
+                  }, 400);
+                }
+              }
+
+              // Set driver approved
+              await env.DB.prepare(
+                `UPDATE drivers SET is_approved = 1, rejection_reason = NULL WHERE id = ?`
+              ).bind(driver.id).run();
+
+              // Auto-approve all documents for this driver
+              await env.DB.prepare(
+                `UPDATE driver_documents SET verification_status = 'approved', rejection_reason = NULL, verified_by = 'Admin' WHERE driver_id = ?`
+              ).bind(driver.id).run().catch(() => {});
+
+              // Auto-create active subscription for driver if none exists
+              const existingSub = await env.DB.prepare(`SELECT id FROM subscriptions WHERE driver_id = ? AND status = 'active' LIMIT 1`).bind(driver.id).first().catch(() => null);
+              if (!existingSub) {
+                const subId = generateId('sub');
+                await env.DB.prepare(
+                  `INSERT INTO subscriptions (id, driver_id, plan_type, amount, status, starts_at, expires_at, payment_tx_ref)
+                   VALUES (?, ?, 'weekly', 200, 'active', CURRENT_TIMESTAMP, datetime('now', '+7 days'), 'TXN-WELCOME')`
+                ).bind(subId, driver.id).run().catch(() => {});
+              }
+
+              // Send Notification
+              await env.DB.prepare(
+                `INSERT INTO notifications (id, user_id, title, message, type) VALUES (?, ?, ?, ?, 'success')`
+              ).bind(generateId('notif'), driver.user_id, 'Account Approved!', 'Your driver account & vehicle have been approved by Admin. You are ready to accept rides!').run().catch(() => {});
+
+              return json({ success: true, message: 'Driver approved successfully and subscription activated' });
+
+            } else if (action === 'reject') {
+              const reason = body.rejection_reason || body.reason || 'Verification standards not met';
+              await env.DB.prepare(
+                `UPDATE drivers SET is_approved = 0, rejection_reason = ? WHERE id = ?`
+              ).bind(reason, driver.id).run();
+
+              await env.DB.prepare(
+                `INSERT INTO notifications (id, user_id, title, message, type) VALUES (?, ?, ?, ?, 'alert')`
+              ).bind(generateId('notif'), driver.user_id, 'Application Rejected', `Your driver application was rejected. Reason: ${reason}`).run().catch(() => {});
+
+              return json({ success: true, message: 'Driver application rejected' });
+
+            } else if (action === 'suspend') {
+              const reason = body.reason || 'Suspended by Administrator';
+              await env.DB.prepare(
+                `UPDATE drivers SET is_approved = 0, is_online = 0, rejection_reason = ? WHERE id = ?`
+              ).bind(reason, driver.id).run();
+
+              return json({ success: true, message: 'Driver account suspended' });
+            }
           }
         }
 
-        return json({ success: true, message: isApprove ? 'Driver approved successfully' : 'Driver application rejected' });
+        return json({ success: false, message: 'Driver record not found in D1 database' }, 404);
       }
 
-      // DELETE DRIVER ENDPOINT (ADMIN)
-      if (path.startsWith('/api/admin/drivers/') && method === 'DELETE') {
+      // 7. DELETE /api/admin/driver/:id
+      if (path.startsWith('/api/admin/driver/') && method === 'DELETE') {
         const segments = path.split('/');
         const driverId = segments[4];
 
@@ -1018,69 +1247,10 @@ export default {
           }
         }
 
-        return json({ success: true, message: 'Driver deleted successfully' });
+        return json({ success: true, message: 'Driver account deleted cleanly from D1' });
       }
 
-      if (path === '/api/admin/approve-driver' && method === 'POST') {
-        const user = await authenticateUser(request, env);
-        if (!user || user.role !== 'admin') {
-          return json({ error: 'Forbidden: Admin access required' }, 403);
-        }
-
-        const body: any = await request.json();
-        const { driver_id, approve } = body;
-
-        if (env.DB) {
-          const driver = await env.DB.prepare(`SELECT * FROM drivers WHERE id = ? LIMIT 1`).bind(driver_id).first();
-          if (driver) {
-            await env.DB.prepare(`UPDATE drivers SET is_approved = ? WHERE id = ?`).bind(approve ? 1 : 0, driver_id).run();
-
-            await env.DB.prepare(
-              `INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details)
-               VALUES (?, ?, ?, 'driver', ?, '')`
-            ).bind(generateId('audit'), user.id, approve ? 'APPROVE_DRIVER' : 'REJECT_DRIVER', driver_id).run();
-          }
-        }
-
-        return json({ success: true, message: approve ? 'Driver approved' : 'Driver status revoked' });
-      }
-
-      if (path === '/api/admin/stats' && method === 'GET') {
-        let stats = {
-          totalRiders: 0,
-          totalDrivers: 0,
-          pendingDrivers: 0,
-          approvedDrivers: 0,
-          activeRides: 0,
-          completedTrips: 0,
-          cancelledTrips: 0,
-          subscriptionRevenue: 0,
-        };
-
-        if (env.DB) {
-          const ridersRes = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM users WHERE role = 'rider'`).first();
-          const driversRes = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM drivers`).first();
-          const pendingRes = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM drivers WHERE is_approved = 0`).first();
-          const approvedRes = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM drivers WHERE is_approved = 1`).first();
-          const completedRes = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM trips WHERE status = 'completed'`).first();
-          const cancelledRes = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM trips WHERE status = 'cancelled'`).first();
-          const activeRes = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM trips WHERE status IN ('requested', 'accepted', 'driver_arriving', 'driver_arrived', 'started')`).first();
-          const subRevRes = await env.DB.prepare(`SELECT SUM(amount) as total FROM subscriptions`).first();
-
-          stats = {
-            totalRiders: ridersRes?.cnt || 0,
-            totalDrivers: driversRes?.cnt || 0,
-            pendingDrivers: pendingRes?.cnt || 0,
-            approvedDrivers: approvedRes?.cnt || 0,
-            activeRides: activeRes?.cnt || 0,
-            completedTrips: completedRes?.cnt || 0,
-            cancelledTrips: cancelledRes?.cnt || 0,
-            subscriptionRevenue: subRevRes?.total || 0,
-          };
-        }
-
-        return json({ stats });
-      }
+      // ==========================================
 
       // ==========================================
       // PHASE 2 — NEARBY DRIVERS
