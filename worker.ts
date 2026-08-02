@@ -248,29 +248,8 @@ async function syncDriverDocsFromDriversTable(env: Env) {
     const driversRes = await env.DB.prepare(`SELECT * FROM drivers`).all().catch(() => ({ results: [] }));
     const drivers = driversRes.results || [];
 
-    if (drivers.length === 0) {
-      // Seed a default sample driver with sample documents if database is completely fresh
-      const sampleUserId = 'usr_seed_driver_1';
-      const sampleDriverId = 'drv_seed_1';
-
-      await env.DB.prepare(
-        `INSERT OR IGNORE INTO users (id, role, username, full_name, email, password_hash, mobile_number, email_verified)
-         VALUES (?, 'driver', 'driver_sample', 'Tariq Mehmood', 'tariq.driver@apnicar.pk', 'hash123', '03001234567', 1)`
-      ).bind(sampleUserId).run().catch(() => {});
-
-      await env.DB.prepare(
-        `INSERT OR IGNORE INTO drivers (
-          id, user_id, cnic, driving_licence, vehicle_type, vehicle_brand, vehicle_model,
-          vehicle_colour, vehicle_reg_number, is_approved, is_online, is_available,
-          cnic_front_url, cnic_back_url, licence_doc_url, registration_doc_url
-        ) VALUES (?, ?, '35202-1234567-1', 'LHR-98765', 'Car', 'Toyota', 'Corolla', 'Silver', 'LEA-1234', 1, 1, 1, ?, ?, ?, ?)`
-      ).bind(sampleDriverId, sampleUserId, defaultDocs.cnic_front, defaultDocs.cnic_back, defaultDocs.licence, defaultDocs.registration).run().catch(() => {});
-
-      await saveDriverDocToD1(env, `doc_cf_${sampleDriverId}`, sampleDriverId, 'cnic_front', `drivers/${sampleDriverId}/cnic_front.jpg`, defaultDocs.cnic_front, 'cnic_front.jpg', 'image/jpeg', 1024);
-      await saveDriverDocToD1(env, `doc_cb_${sampleDriverId}`, sampleDriverId, 'cnic_back', `drivers/${sampleDriverId}/cnic_back.jpg`, defaultDocs.cnic_back, 'cnic_back.jpg', 'image/jpeg', 1024);
-      await saveDriverDocToD1(env, `doc_lic_${sampleDriverId}`, sampleDriverId, 'licence', `drivers/${sampleDriverId}/licence.jpg`, defaultDocs.licence, 'licence.jpg', 'image/jpeg', 1024);
-      await saveDriverDocToD1(env, `doc_reg_${sampleDriverId}`, sampleDriverId, 'registration', `drivers/${sampleDriverId}/registration.jpg`, defaultDocs.registration, 'registration.jpg', 'image/jpeg', 1024);
-      console.log('[D1 Seed Success] Seeded sample driver and document records into D1 database');
+    if (!drivers || drivers.length === 0) {
+      // No drivers in DB — do not auto-seed here so deletions persist!
       return;
     }
 
@@ -301,23 +280,29 @@ async function syncDriverDocsFromDriversTable(env: Env) {
       ];
 
       for (const doc of docsToStore) {
-        const docId = `doc_${doc.type}_${driverId}`;
-        const fileKey = `drivers/${driverId}/${doc.type}.jpg`;
-        await saveDriverDocToD1(
-          env,
-          docId,
-          driverId,
-          doc.type,
-          fileKey,
-          doc.url,
-          `${doc.type}.jpg`,
-          'image/jpeg',
-          1024
-        );
+        const existingDoc = await env.DB.prepare(
+          `SELECT id FROM driver_documents WHERE driver_id = ? AND (doc_type = ? OR document_type = ?) LIMIT 1`
+        ).bind(driverId, doc.type, doc.type).first().catch(() => null);
+
+        if (!existingDoc) {
+          const docId = `doc_${doc.type}_${driverId}`;
+          const fileKey = `drivers/${driverId}/${doc.type}.jpg`;
+          await saveDriverDocToD1(
+            env,
+            docId,
+            driverId,
+            doc.type,
+            fileKey,
+            doc.url,
+            `${doc.type}.jpg`,
+            'image/jpeg',
+            1024
+          );
+        }
       }
     }
-  } catch (err) {
-    console.error('[syncDriverDocsFromDriversTable Error]', err);
+  } catch (e) {
+    console.error('Error in syncDriverDocsFromDriversTable:', e);
   }
 }
 
