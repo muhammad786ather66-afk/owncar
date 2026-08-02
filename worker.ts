@@ -140,6 +140,17 @@ async function verifyPassword(password: string, storedHash: string): Promise<boo
   }
 }
 
+function formatLicenceOrReg(val: string): string {
+  if (!val) return '';
+  const str = val.toUpperCase().trim();
+  const letters = str.replace(/[^A-Z]/g, '');
+  const numbers = str.replace(/[^0-9]/g, '');
+  if (letters && numbers) {
+    return `${letters}- ${numbers}`;
+  }
+  return str;
+}
+
 // Helper: Save driver document record to D1 (supports Cloudflare D1 schema & custom schema)
 async function saveDriverDocToD1(
   env: Env,
@@ -152,23 +163,39 @@ async function saveDriverDocToD1(
   contentType: string,
   size: number
 ) {
-  if (!env.DB || !driverId) return;
-  // Try Cloudflare D1 schema first (document_type, document_url, verification_status)
+  if (!env.DB || !driverId) {
+    console.warn(`[saveDriverDocToD1 Warning] Cannot save doc: DB=${!!env.DB}, driverId='${driverId}'`);
+    return;
+  }
+  
+  // Strategy 1: Both document_type/document_url AND doc_type/file_key/file_url
   try {
     await env.DB.prepare(
-      `INSERT INTO driver_documents (id, driver_id, document_type, document_url, verification_status)
-       VALUES (?, ?, ?, ?, 'pending')`
-    ).bind(docId, driverId, docType, fileUrl).run();
+      `INSERT INTO driver_documents (id, driver_id, document_type, document_url, doc_type, file_key, file_url, verification_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`
+    ).bind(docId, driverId, docType, fileUrl, docType, fileKey, fileUrl).run();
+    console.log(`[D1 Doc Save Success] Inserted document '${docId}' for driver '${driverId}'`);
     return;
-  } catch (err) {
-    // Fallback to custom schema (doc_type, file_key, file_url, original_filename, content_type, size)
+  } catch (err1: any) {
+    // Strategy 2: Official D1 schema (document_type, document_url, verification_status)
     try {
       await env.DB.prepare(
-        `INSERT INTO driver_documents (id, driver_id, doc_type, file_key, file_url, original_filename, content_type, size)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(docId, driverId, docType, fileKey, fileUrl, filename, contentType, size).run();
-    } catch (e) {
-      console.error('Failed to insert driver document into D1:', e);
+        `INSERT INTO driver_documents (id, driver_id, document_type, document_url, verification_status)
+         VALUES (?, ?, ?, ?, 'pending')`
+      ).bind(docId, driverId, docType, fileUrl).run();
+      console.log(`[D1 Doc Save Success (Strategy 2)] Inserted document '${docId}' for driver '${driverId}'`);
+      return;
+    } catch (err2: any) {
+      // Strategy 3: Custom D1 schema (doc_type, file_key, file_url, original_filename, content_type, size)
+      try {
+        await env.DB.prepare(
+          `INSERT INTO driver_documents (id, driver_id, doc_type, file_key, file_url, original_filename, content_type, size)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(docId, driverId, docType, fileKey, fileUrl, filename, contentType, size).run();
+        console.log(`[D1 Doc Save Success (Strategy 3)] Inserted document '${docId}' for driver '${driverId}'`);
+      } catch (err3: any) {
+        console.error(`[D1 Doc Save Error] Failed to insert document into D1:`, err3?.message || err3);
+      }
     }
   }
 }
@@ -317,11 +344,30 @@ export default {
             doc_type TEXT,
             file_key TEXT,
             file_url TEXT,
+            original_filename TEXT,
+            content_type TEXT,
+            size INTEGER,
             verification_status TEXT DEFAULT 'pending',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(driver_id) REFERENCES drivers(id) ON DELETE CASCADE
           );
         `).catch(() => {});
+
+        // Safe auto-migration to add any missing columns to existing driver_documents table without dropping it
+        const alterQueries = [
+          'ALTER TABLE driver_documents ADD COLUMN document_type TEXT',
+          'ALTER TABLE driver_documents ADD COLUMN document_url TEXT',
+          'ALTER TABLE driver_documents ADD COLUMN doc_type TEXT',
+          'ALTER TABLE driver_documents ADD COLUMN file_key TEXT',
+          'ALTER TABLE driver_documents ADD COLUMN file_url TEXT',
+          'ALTER TABLE driver_documents ADD COLUMN original_filename TEXT',
+          'ALTER TABLE driver_documents ADD COLUMN content_type TEXT',
+          'ALTER TABLE driver_documents ADD COLUMN size INTEGER',
+          'ALTER TABLE driver_documents ADD COLUMN verification_status TEXT DEFAULT "pending"'
+        ];
+        for (const query of alterQueries) {
+          await env.DB.prepare(query).run().catch(() => {});
+        }
       }
 
       // ==========================================
@@ -378,12 +424,12 @@ export default {
           await env.DB.prepare(
             `INSERT INTO users (id, role, username, full_name, email, password_hash, mobile_number, email_verified)
              VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
-          ).bind(userId, role, username, full_name, email, passHash, mobile_number || '');
+          ).bind(userId, role, username, full_name, email, passHash, mobile_number || '').run();
 
           await env.DB.prepare(
             `INSERT INTO verification_tokens (id, email, token, code, expires_at)
              VALUES (?, ?, ?, '123456', DATETIME('now', '+1 year'))`
-          ).bind(generateId('tok'), email, token);
+          ).bind(generateId('tok'), email, token).run();
         }
 
         const userObj = { id: userId, role, username, full_name, email, mobile_number, email_verified: true };
@@ -425,7 +471,7 @@ export default {
           await env.DB.prepare(
             `INSERT OR REPLACE INTO verification_tokens (id, email, token, code, expires_at)
              VALUES (?, ?, ?, '123456', DATETIME('now', '+1 year'))`
-          ).bind(generateId('tok'), user.email, token);
+          ).bind(generateId('tok'), user.email, token).run();
         } else {
           // Worker fallback mockup
           user = { id: 'usr-admin-1', role: 'admin', username: 'admin', full_name: 'ApniCar Admin', email: 'admin@apnicar.pk' };
@@ -477,9 +523,12 @@ export default {
 
         const body: any = await request.json();
 
+        const formattedLicence = formatLicenceOrReg(body.driving_licence || 'LHR- 5658');
+        const formattedRegNumber = formatLicenceOrReg(body.registration_number || body.vehicle_reg_number || 'LHR- 5658');
+
         if (env.DB) {
           // Ensure user role is updated to driver
-          await env.DB.prepare(`UPDATE users SET role = 'driver' WHERE id = ?`).bind(user.id).catch(() => {});
+          await env.DB.prepare(`UPDATE users SET role = 'driver' WHERE id = ?`).bind(user.id).run().catch(() => {});
 
           const existingDriver: any = await env.DB.prepare(`SELECT id FROM drivers WHERE user_id = ? LIMIT 1`).bind(user.id).first();
           let driverId = existingDriver?.id as string;
@@ -502,18 +551,18 @@ export default {
                WHERE id = ?`
             ).bind(
               body.cnic || '',
-              body.driving_licence || '',
+              formattedLicence,
               body.service_type_id || body.vehicle_type || '',
               body.vehicle_brand || '',
               body.vehicle_model || '',
               body.vehicle_colour || body.vehicle_color || '',
-              body.registration_number || body.vehicle_reg_number || '',
+              formattedRegNumber,
               body.cnic_front_url || '', body.cnic_front_url || '',
               body.cnic_back_url || '', body.cnic_back_url || '',
               body.licence_doc_url || '', body.licence_doc_url || '',
               body.registration_doc_url || '', body.registration_doc_url || '',
               driverId
-            ).catch((e) => console.error('Error updating driver profile:', e));
+            ).run().catch((e) => console.error('Error updating driver profile:', e));
           } else {
             // Create new driver profile
             driverId = generateId('drv');
@@ -527,17 +576,17 @@ export default {
               driverId,
               user.id,
               body.cnic || '35202-0000000-0',
-              body.driving_licence || 'LIC-00000',
+              formattedLicence,
               body.service_type_id || body.vehicle_type || 'Car',
               body.vehicle_brand || 'Suzuki',
               body.vehicle_model || 'Alto',
               body.vehicle_colour || body.vehicle_color || 'White',
-              body.registration_number || body.vehicle_reg_number || 'REG-1234',
+              formattedRegNumber,
               body.cnic_front_url || '',
               body.cnic_back_url || '',
               body.licence_doc_url || '',
               body.registration_doc_url || ''
-            ).catch((e) => console.error('Error inserting driver profile:', e));
+            ).run().catch((e) => console.error('Error inserting driver profile:', e));
           }
 
           // Store document records in driver_documents table and Cloudflare R2
@@ -634,7 +683,7 @@ export default {
             return json({ error: 'Driver application is pending admin approval' }, 403);
           }
 
-          await env.DB.prepare(`UPDATE drivers SET is_online = ? WHERE id = ?`).bind(onlineStatus, driver.id);
+          await env.DB.prepare(`UPDATE drivers SET is_online = ? WHERE id = ?`).bind(onlineStatus, driver.id).run();
         }
 
         return json({ success: true, is_online: !!onlineStatus, message: onlineStatus ? 'Driver is now ONLINE' : 'Driver is now OFFLINE' });
@@ -651,7 +700,7 @@ export default {
         if (env.DB) {
           await env.DB.prepare(
             `UPDATE drivers SET current_lat = ?, current_lng = ? WHERE user_id = ?`
-          ).bind(lat, lng, user.id);
+          ).bind(lat, lng, user.id).run();
         }
 
         return json({ success: true });
@@ -705,13 +754,13 @@ export default {
 
           await env.DB.prepare(
             `UPDATE drivers SET is_approved = ? WHERE id = ?`
-          ).bind(isApprove ? 1 : 0, driverId);
+          ).bind(isApprove ? 1 : 0, driverId).run();
 
           // Audit log
           await env.DB.prepare(
             `INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details)
              VALUES (?, ?, ?, 'driver', ?, ?)`
-          ).bind(generateId('audit'), user.id, isApprove ? 'APPROVE_DRIVER' : 'REJECT_DRIVER', driverId, body.rejection_reason || '');
+          ).bind(generateId('audit'), user.id, isApprove ? 'APPROVE_DRIVER' : 'REJECT_DRIVER', driverId, body.rejection_reason || '').run();
 
           // Notification
           await env.DB.prepare(
@@ -725,7 +774,7 @@ export default {
               ? 'Congratulations! Your driver account has been approved by Admin.'
               : `Your driver application was rejected. Reason: ${body.rejection_reason || 'Document verification incomplete'}`,
             isApprove ? 'success' : 'alert'
-          );
+          ).run();
         }
 
         return json({ success: true, message: isApprove ? 'Driver approved successfully' : 'Driver application rejected' });
@@ -743,12 +792,12 @@ export default {
         if (env.DB) {
           const driver = await env.DB.prepare(`SELECT * FROM drivers WHERE id = ? LIMIT 1`).bind(driver_id).first();
           if (driver) {
-            await env.DB.prepare(`UPDATE drivers SET is_approved = ? WHERE id = ?`).bind(approve ? 1 : 0, driver_id);
+            await env.DB.prepare(`UPDATE drivers SET is_approved = ? WHERE id = ?`).bind(approve ? 1 : 0, driver_id).run();
 
             await env.DB.prepare(
               `INSERT INTO audit_logs (id, user_id, action, target_type, target_id, details)
                VALUES (?, ?, ?, 'driver', ?, '')`
-            ).bind(generateId('audit'), user.id, approve ? 'APPROVE_DRIVER' : 'REJECT_DRIVER', driver_id);
+            ).bind(generateId('audit'), user.id, approve ? 'APPROVE_DRIVER' : 'REJECT_DRIVER', driver_id).run();
           }
         }
 
@@ -879,7 +928,7 @@ export default {
             fareAmount,
             distanceKm,
             estMins
-          );
+          ).run();
 
           // Find nearby online/approved drivers and create offers
           const driversRes = await env.DB.prepare(
@@ -891,7 +940,7 @@ export default {
           for (const drv of eligibleDrivers) {
             await env.DB.prepare(
               `INSERT INTO trip_driver_offers (id, trip_id, driver_id, status) VALUES (?, ?, ?, 'pending')`
-            ).bind(generateId('offer'), tripId, drv.id);
+            ).bind(generateId('offer'), tripId, drv.id).run();
 
             const drvUser = await env.DB.prepare(`SELECT user_id FROM drivers WHERE id = ?`).bind(drv.id).first();
             if (drvUser) {
@@ -902,7 +951,7 @@ export default {
                 drvUser.user_id,
                 'New Ride Request Available!',
                 `Ride from ${body.pickup_address || 'Pickup'} - PKR ${fareAmount}`
-              );
+              ).run();
             }
           }
         }
@@ -1035,19 +1084,19 @@ export default {
           // Atomic update
           await env.DB.prepare(
             `UPDATE trips SET driver_id = ?, status = 'accepted' WHERE id = ? AND (status = 'requested' OR status = 'searching')`
-          ).bind(driver.id, tripId);
+          ).bind(driver.id, tripId).run();
 
           // Update driver availability
-          await env.DB.prepare(`UPDATE drivers SET is_available = 0 WHERE id = ?`).bind(driver.id);
+          await env.DB.prepare(`UPDATE drivers SET is_available = 0 WHERE id = ?`).bind(driver.id).run();
 
           // Update offer records
           await env.DB.prepare(
             `UPDATE trip_driver_offers SET status = 'accepted' WHERE trip_id = ? AND driver_id = ?`
-          ).bind(tripId, driver.id);
+          ).bind(tripId, driver.id).run();
 
           await env.DB.prepare(
             `UPDATE trip_driver_offers SET status = 'expired' WHERE trip_id = ? AND driver_id != ?`
-          ).bind(tripId, driver.id);
+          ).bind(tripId, driver.id).run();
 
           // Notify Rider
           await env.DB.prepare(
@@ -1057,7 +1106,7 @@ export default {
             trip.rider_id,
             'Driver Accepted Your Ride!',
             `${driver.vehicle_brand} ${driver.vehicle_model} (${driver.vehicle_reg_number}) is on the way!`
-          );
+          ).run();
 
           const updatedTrip = await env.DB.prepare(`SELECT * FROM trips WHERE id = ?`).bind(tripId).first();
           return json({ success: true, trip: updatedTrip });
@@ -1077,7 +1126,7 @@ export default {
           if (driver) {
             await env.DB.prepare(
               `UPDATE trip_driver_offers SET status = 'declined' WHERE trip_id = ? AND driver_id = ?`
-            ).bind(tripId, driver.id);
+            ).bind(tripId, driver.id).run();
           }
         }
 
@@ -1117,13 +1166,13 @@ export default {
 
           await env.DB.prepare(
             `UPDATE trips SET status = ? ${extraSet} WHERE id = ?`
-          ).bind(nextStatus, tripId);
+          ).bind(nextStatus, tripId).run();
 
           // If completed or cancelled, release driver availability
           if ((nextStatus === 'completed' || nextStatus === 'cancelled') && trip.driver_id) {
-            await env.DB.prepare(`UPDATE drivers SET is_available = 1 WHERE id = ?`).bind(trip.driver_id);
+            await env.DB.prepare(`UPDATE drivers SET is_available = 1 WHERE id = ?`).bind(trip.driver_id).run();
             if (nextStatus === 'completed') {
-              await env.DB.prepare(`UPDATE drivers SET total_rides = total_rides + 1 WHERE id = ?`).bind(trip.driver_id);
+              await env.DB.prepare(`UPDATE drivers SET total_rides = total_rides + 1 WHERE id = ?`).bind(trip.driver_id).run();
             }
           }
 
@@ -1135,7 +1184,7 @@ export default {
             trip.rider_id,
             `Trip Update: ${nextStatus.replace('_', ' ').toUpperCase()}`,
             `Your ride status is now: ${nextStatus}`
-          );
+          ).run();
 
           const updated = await env.DB.prepare(`SELECT * FROM trips WHERE id = ?`).bind(tripId).first();
           return json({ success: true, trip: updated });
@@ -1167,18 +1216,18 @@ export default {
           if (!driver) return json({ error: 'Driver profile not found' }, 404);
 
           // Deactivate old subs
-          await env.DB.prepare(`UPDATE subscriptions SET status = 'expired' WHERE driver_id = ?`).bind(driver.id);
+          await env.DB.prepare(`UPDATE subscriptions SET status = 'expired' WHERE driver_id = ?`).bind(driver.id).run();
 
           await env.DB.prepare(
             `INSERT INTO subscriptions (
               id, driver_id, plan_type, amount, status, starts_at, expires_at, payment_tx_ref
             ) VALUES (?, ?, ?, ?, 'active', DATETIME('now'), DATETIME('now', '+${duration} days'), ?)`
-          ).bind(subId, driver.id, planId, amount, body.tx_ref || 'TXN-DIRECT');
+          ).bind(subId, driver.id, planId, amount, body.tx_ref || 'TXN-DIRECT').run();
 
           await env.DB.prepare(
             `INSERT INTO subscription_payments (id, subscription_id, driver_id, amount, payment_method, payment_status)
              VALUES (?, ?, ?, ?, ?, 'completed')`
-          ).bind(generateId('spay'), subId, driver.id, amount, paymentMethod);
+          ).bind(generateId('spay'), subId, driver.id, amount, paymentMethod).run();
         }
 
         return json({
@@ -1214,7 +1263,7 @@ export default {
           await env.DB.prepare(
             `INSERT INTO ratings (id, trip_id, rater_id, rated_user_id, rating, comment)
              VALUES (?, ?, ?, ?, ?, ?)`
-          ).bind(generateId('rate'), tripId, user.id, body.rated_user_id || trip.driver_id, score, comment);
+          ).bind(generateId('rate'), tripId, user.id, body.rated_user_id || trip.driver_id, score, comment).run();
 
           // Update driver aggregate rating if driver was rated
           if (trip.driver_id) {
@@ -1223,7 +1272,7 @@ export default {
             ).bind(trip.driver_id).first();
 
             if (avgRes && avgRes.avg_score) {
-              await env.DB.prepare(`UPDATE drivers SET rating = ? WHERE id = ?`).bind(Math.round(avgRes.avg_score * 10) / 10, trip.driver_id);
+              await env.DB.prepare(`UPDATE drivers SET rating = ? WHERE id = ?`).bind(Math.round(avgRes.avg_score * 10) / 10, trip.driver_id).run();
             }
           }
         }
@@ -1256,7 +1305,7 @@ export default {
         const notifId = path.split('/')[3];
 
         if (env.DB) {
-          await env.DB.prepare(`UPDATE notifications SET is_read = 1 WHERE id = ?`).bind(notifId);
+          await env.DB.prepare(`UPDATE notifications SET is_read = 1 WHERE id = ?`).bind(notifId).run();
         }
 
         return json({ success: true });
@@ -1433,6 +1482,7 @@ export default {
               if (colMap[docType]) {
                 await env.DB.prepare(`UPDATE drivers SET ${colMap[docType]} = ? WHERE id = ?`)
                   .bind(publicUrl, targetDriverId)
+                  .run()
                   .catch(() => {});
               }
             }
