@@ -740,7 +740,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
                   <span>Verifying Code...</span>
                 ) : (
                   <>
-                    <CheckCircle className="w-4 h-4" />
+                    <CheckCircle2 className="w-4 h-4" />
                     <span>Verify & Continue</span>
                   </>
                 )}

@@ -67,17 +67,17 @@ export const Navbar: React.FC<Props> = ({
             <span className="hidden xs:inline">Home</span>
           </button>
 
-          {/* Admin Dashboard Button — PROMINENT YELLOW BADGE */}
+          {/* Admin Dashboard Button — Refined & Sober Badge */}
           <button
             onClick={() => onSwitchRole('admin')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all border shrink-0 shadow-sm ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all border shrink-0 shadow-sm ${
               activeRole === 'admin'
-                ? 'bg-yellow-400 text-slate-950 border-yellow-500 ring-2 ring-yellow-400/30'
-                : 'bg-yellow-400/15 text-yellow-300 border-yellow-400/40 hover:bg-yellow-400/30'
+                ? 'bg-amber-400 text-slate-950 border-amber-300 ring-2 ring-amber-400/30 shadow-md scale-[1.02]'
+                : 'bg-slate-800/90 hover:bg-slate-800 text-amber-300 border-amber-400/30 hover:border-amber-400/60 hover:text-amber-200'
             }`}
             title="Open Admin Dashboard & Driver Approvals"
           >
-            <Shield className="w-4 h-4 text-slate-950 fill-yellow-400" />
+            <Shield className={`w-3.5 h-3.5 ${activeRole === 'admin' ? 'text-slate-950 fill-slate-950' : 'text-amber-400 fill-amber-400/20'}`} />
             <span>Admin Panel</span>
           </button>
 
