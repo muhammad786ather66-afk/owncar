@@ -169,45 +169,68 @@ async function saveDriverDocToD1(
   docType: string,
   fileKey: string,
   fileUrl: string,
-  filename: string,
-  contentType: string,
-  size: number
+  filename: string = 'document.jpg',
+  contentType: string = 'image/jpeg',
+  size: number = 1024
 ) {
-  const targetDriverId = driverId || 'unassigned_driver';
   if (!env.DB) {
     console.warn(`[saveDriverDocToD1 Warning] Cannot save doc: DB is not bound`);
     return;
   }
+
+  const safeDocId = String(docId || `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
+  const safeDriverId = String(driverId || 'unassigned_driver');
+  const safeDocType = String(docType || 'document');
+  const safeFileKey = String(fileKey || `drivers/${safeDriverId}/${safeDocType}.jpg`);
+  const safeFileUrl = String(fileUrl || 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=600');
+  const safeFilename = String(filename || 'document.jpg');
+  const safeContentType = String(contentType || 'image/jpeg');
+  const safeSize = Number(size) || 1024;
   
-  // Strategy 1: Both document_type/document_url AND doc_type/file_key/file_url
+  // Strategy 1: Multi-schema INSERT OR REPLACE (All columns)
   try {
     await env.DB.prepare(
-      `INSERT INTO driver_documents (id, driver_id, document_type, document_url, doc_type, file_key, file_url, verification_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`
-    ).bind(docId, targetDriverId, docType, fileUrl, docType, fileKey, fileUrl).run();
-    console.log(`[D1 Doc Save Success] Inserted document '${docId}' for driver '${targetDriverId}'`);
+      `INSERT OR REPLACE INTO driver_documents (id, driver_id, document_type, document_url, doc_type, file_key, file_url, original_filename, content_type, size, verification_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`
+    ).bind(
+      safeDocId,
+      safeDriverId,
+      safeDocType,
+      safeFileUrl,
+      safeDocType,
+      safeFileKey,
+      safeFileUrl,
+      safeFilename,
+      safeContentType,
+      safeSize
+    ).run();
+    console.log(`[D1 Doc Save Success 1] Inserted document '${safeDocId}' for driver '${safeDriverId}'`);
     return;
   } catch (err1: any) {
-    // Strategy 2: Official D1 schema (document_type, document_url, verification_status)
-    try {
-      await env.DB.prepare(
-        `INSERT INTO driver_documents (id, driver_id, document_type, document_url, verification_status)
-         VALUES (?, ?, ?, 'pending')`
-      ).bind(docId, targetDriverId, docType, fileUrl).run();
-      console.log(`[D1 Doc Save Success (Strategy 2)] Inserted document '${docId}' for driver '${targetDriverId}'`);
-      return;
-    } catch (err2: any) {
-      // Strategy 3: Custom D1 schema (doc_type, file_key, file_url, original_filename, content_type, size)
-      try {
-        await env.DB.prepare(
-          `INSERT INTO driver_documents (id, driver_id, doc_type, file_key, file_url, original_filename, content_type, size)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(docId, targetDriverId, docType, fileKey, fileUrl, filename, contentType, size).run();
-        console.log(`[D1 Doc Save Success (Strategy 3)] Inserted document '${docId}' for driver '${targetDriverId}'`);
-      } catch (err3: any) {
-        console.error(`[D1 Doc Save Error] Failed to insert document into D1:`, err3?.message || err3);
-      }
-    }
+    console.warn('[D1 Doc Save Strategy 1 Warning]:', err1?.message || err1);
+  }
+
+  // Strategy 2: Standard schema (id, driver_id, document_type, document_url, verification_status)
+  try {
+    await env.DB.prepare(
+      `INSERT OR REPLACE INTO driver_documents (id, driver_id, document_type, document_url, verification_status)
+       VALUES (?, ?, ?, ?, 'pending')`
+    ).bind(safeDocId, safeDriverId, safeDocType, safeFileUrl).run();
+    console.log(`[D1 Doc Save Success 2] Inserted document '${safeDocId}' for driver '${safeDriverId}'`);
+    return;
+  } catch (err2: any) {
+    console.warn('[D1 Doc Save Strategy 2 Warning]:', err2?.message || err2);
+  }
+
+  // Strategy 3: Custom schema (id, driver_id, doc_type, file_key, file_url, original_filename, content_type, size)
+  try {
+    await env.DB.prepare(
+      `INSERT OR REPLACE INTO driver_documents (id, driver_id, doc_type, file_key, file_url, original_filename, content_type, size)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(safeDocId, safeDriverId, safeDocType, safeFileKey, safeFileUrl, safeFilename, safeContentType, safeSize).run();
+    console.log(`[D1 Doc Save Success 3] Inserted document '${safeDocId}' for driver '${safeDriverId}'`);
+  } catch (err3: any) {
+    console.error(`[D1 Doc Save Strategy 3 Error]`, err3?.message || err3);
   }
 }
 
@@ -252,25 +275,23 @@ async function syncDriverDocsFromDriversTable(env: Env) {
     }
 
     for (const drv of drivers) {
-      const driverId = drv.id as string;
+      const driverId = String(drv.id || '').trim();
       if (!driverId) continue;
 
-      const cnicFront = drv.cnic_front_url && drv.cnic_front_url.trim() ? drv.cnic_front_url : defaultDocs.cnic_front;
-      const cnicBack = drv.cnic_back_url && drv.cnic_back_url.trim() ? drv.cnic_back_url : defaultDocs.cnic_back;
-      const licenceDoc = drv.licence_doc_url && drv.licence_doc_url.trim() ? drv.licence_doc_url : defaultDocs.licence;
-      const regDoc = drv.registration_doc_url && drv.registration_doc_url.trim() ? drv.registration_doc_url : defaultDocs.registration;
+      const cnicFront = (drv.cnic_front_url && String(drv.cnic_front_url).trim()) ? String(drv.cnic_front_url) : defaultDocs.cnic_front;
+      const cnicBack = (drv.cnic_back_url && String(drv.cnic_back_url).trim()) ? String(drv.cnic_back_url) : defaultDocs.cnic_back;
+      const licenceDoc = (drv.licence_doc_url && String(drv.licence_doc_url).trim()) ? String(drv.licence_doc_url) : defaultDocs.licence;
+      const regDoc = (drv.registration_doc_url && String(drv.registration_doc_url).trim()) ? String(drv.registration_doc_url) : defaultDocs.registration;
 
       // Ensure drivers table columns are updated if any were NULL or empty
-      if (!drv.cnic_front_url || !drv.cnic_back_url || !drv.licence_doc_url || !drv.registration_doc_url) {
-        await env.DB.prepare(
-          `UPDATE drivers SET 
-             cnic_front_url = COALESCE(NULLIF(cnic_front_url, ''), ?),
-             cnic_back_url = COALESCE(NULLIF(cnic_back_url, ''), ?),
-             licence_doc_url = COALESCE(NULLIF(licence_doc_url, ''), ?),
-             registration_doc_url = COALESCE(NULLIF(registration_doc_url, ''), ?)
-           WHERE id = ?`
-        ).bind(cnicFront, cnicBack, licenceDoc, regDoc, driverId).run().catch(() => {});
-      }
+      await env.DB.prepare(
+        `UPDATE drivers SET 
+           cnic_front_url = COALESCE(NULLIF(cnic_front_url, ''), ?),
+           cnic_back_url = COALESCE(NULLIF(cnic_back_url, ''), ?),
+           licence_doc_url = COALESCE(NULLIF(licence_doc_url, ''), ?),
+           registration_doc_url = COALESCE(NULLIF(registration_doc_url, ''), ?)
+         WHERE id = ?`
+      ).bind(cnicFront, cnicBack, licenceDoc, regDoc, driverId).run().catch(() => {});
 
       const docsToStore = [
         { type: 'cnic_front', url: cnicFront },
@@ -280,25 +301,19 @@ async function syncDriverDocsFromDriversTable(env: Env) {
       ];
 
       for (const doc of docsToStore) {
-        const existing: any = await env.DB.prepare(
-          `SELECT id FROM driver_documents WHERE driver_id = ? AND (doc_type = ? OR document_type = ?) LIMIT 1`
-        ).bind(driverId, doc.type, doc.type).first().catch(() => null);
-
-        if (!existing) {
-          const docId = `doc_${doc.type}_${driverId}`;
-          const fileKey = `drivers/${driverId}/${doc.type}.jpg`;
-          await saveDriverDocToD1(
-            env,
-            docId,
-            driverId,
-            doc.type,
-            fileKey,
-            doc.url,
-            `${doc.type}.jpg`,
-            'image/jpeg',
-            1024
-          );
-        }
+        const docId = `doc_${doc.type}_${driverId}`;
+        const fileKey = `drivers/${driverId}/${doc.type}.jpg`;
+        await saveDriverDocToD1(
+          env,
+          docId,
+          driverId,
+          doc.type,
+          fileKey,
+          doc.url,
+          `${doc.type}.jpg`,
+          'image/jpeg',
+          1024
+        );
       }
     }
   } catch (err) {
