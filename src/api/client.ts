@@ -45,17 +45,17 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    let message = data.error || data.message || 'Request failed';
+    let message = data.error || data.message || data.details || 'Request failed';
     if (response.status === 401) {
-      message = data.error || 'Your session has expired. Please log in again.';
+      message = data.error || data.message || 'Your session has expired. Please log in again.';
     } else if (response.status === 403) {
-      message = data.error || 'Access denied. You do not have permission for this action.';
+      message = data.error || data.message || 'Access denied. You do not have permission for this action.';
     } else if (response.status === 404) {
-      message = data.error || 'Resource not found on ApniCar server.';
+      message = data.error || data.message || 'Resource not found on ApniCar server.';
     } else if (response.status === 409) {
-      message = data.error || 'Account or record already exists.';
+      message = data.error || data.message || 'Account or record already exists.';
     } else if (response.status >= 500) {
-      message = data.error || 'ApniCar server error. Please try again shortly.';
+      message = data.error || data.message || `ApniCar server error (${response.status}). Please check details.`;
     }
     throw new ApiError(message, response.status, data);
   }
@@ -174,62 +174,44 @@ export const api = {
     licence_doc_url?: string;
     registration_doc_url?: string;
   }) => {
-    let token = localStorage.getItem('apnicar_token');
+    const payload = {
+      username: body.username,
+      email: body.email,
+      password: body.password,
+      full_name: body.full_name,
+      mobile_number: body.mobile_number,
+      cnic: body.cnic,
+      driving_licence: body.driving_licence,
+      service_type_id: body.service_type_id || 'Car',
+      vehicle_brand: body.vehicle_brand || 'Suzuki',
+      vehicle_model: body.vehicle_model || 'Alto',
+      registration_number: body.registration_number || body.vehicle_reg_number || 'REG-1234',
+      vehicle_reg_number: body.vehicle_reg_number || body.registration_number || 'REG-1234',
+      vehicle_color: body.vehicle_color || body.vehicle_colour || 'White',
+      vehicle_colour: body.vehicle_colour || body.vehicle_color || 'White',
+      model_year: body.model_year || 2022,
+      cnic_front_url: body.cnic_front_url,
+      cnic_back_url: body.cnic_back_url,
+      licence_doc_url: body.licence_doc_url,
+      registration_doc_url: body.registration_doc_url,
+    };
 
-    // If user is not logged in yet, register user account first or auto-login if account exists
-    if (!token && body.username && body.email && body.password) {
-      try {
-        const regRes = await api.register({
-          username: body.username,
-          email: body.email,
-          password: body.password,
-          full_name: body.full_name || '',
-          mobile_number: body.mobile_number || '',
-          role: 'driver',
-        });
-        if (regRes.token) {
-          token = regRes.token;
-          localStorage.setItem('apnicar_token', regRes.token);
-        }
-      } catch (err: any) {
-        // If account or profile already exists (409), attempt to login with provided credentials
-        if (
-          err.status === 409 ||
-          (err.message && (err.message.includes('already exists') || err.message.includes('already registered')))
-        ) {
-          try {
-            const loginRes = await api.login(body.email || body.username, body.password);
-            if (loginRes.token) {
-              token = loginRes.token;
-              localStorage.setItem('apnicar_token', loginRes.token);
-            }
-          } catch (loginErr) {
-            throw err;
-          }
-        } else {
-          throw err;
-        }
-      }
-    }
-
-    // Now submit driver registration details to Cloudflare Worker
-    return request<{ success: boolean; driver: Driver; message: string }>('/api/drivers/register', {
+    const res = await request<{
+      success: boolean;
+      driver: Driver;
+      message: string;
+      token?: string;
+      user?: User;
+      verification_code_demo?: string;
+    }>('/api/drivers/register', {
       method: 'POST',
-      body: JSON.stringify({
-        cnic: body.cnic,
-        driving_licence: body.driving_licence,
-        service_type_id: body.service_type_id || 'Car',
-        vehicle_brand: body.vehicle_brand || 'Suzuki',
-        vehicle_model: body.vehicle_model || 'Alto',
-        registration_number: body.registration_number || body.vehicle_reg_number || 'REG-1234',
-        vehicle_color: body.vehicle_color || body.vehicle_colour || 'White',
-        model_year: body.model_year || 2022,
-        cnic_front_url: body.cnic_front_url,
-        cnic_back_url: body.cnic_back_url,
-        licence_doc_url: body.licence_doc_url,
-        registration_doc_url: body.registration_doc_url,
-      }),
+      body: JSON.stringify(payload),
     });
+
+    if (res.token) {
+      localStorage.setItem('apnicar_token', res.token);
+    }
+    return res;
   },
 
   getDriverMe: () => request<{ driver: Driver } | Driver>('/api/drivers/me'),

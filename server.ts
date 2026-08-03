@@ -513,14 +513,13 @@ async function uploadToCloudinaryServer(
   for (const preset of presets) {
     try {
       console.log(`[CLOUDINARY UPLOAD ATTEMPT] Cloud: ${cloudName}, Preset: '${preset}', DocType: ${docType}`);
-      const bodyParams = new URLSearchParams();
-      bodyParams.append('file', fileOrUrl);
-      bodyParams.append('upload_preset', preset);
-
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: bodyParams.toString(),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file: fileOrUrl,
+          upload_preset: preset,
+        }),
       });
 
       const cData = await res.json().catch(() => null);
@@ -2086,8 +2085,8 @@ app.get('/api/admin/stats', (req, res) => {
         totalTrips,
         activeDrivers,
         activeSubscriptions,
-        revenue: subscriptionRevenue || 14500,
-        subscriptionRevenue: subscriptionRevenue || 14500,
+        revenue: subscriptionRevenue,
+        subscriptionRevenue: subscriptionRevenue,
         recentRegistrations: db.users.slice(-5).reverse(),
       },
     });

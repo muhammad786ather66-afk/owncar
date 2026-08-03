@@ -169,7 +169,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
         setActiveTab('verify');
       }
     } catch (err: any) {
-      setError(err.message || 'Registration failed. Please check your details.');
+      setError(err.message || err.data?.error || 'Registration failed. Please check details.');
     } finally {
       setLoading(false);
     }
@@ -224,7 +224,7 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
       setDemoCodeNotice(`📩 Driver account registered! Your email verification code is: ${code}`);
       setActiveTab('verify');
     } catch (err: any) {
-      setError(err.message || 'Driver registration failed. Check details.');
+      setError(err.message || err.data?.error || 'Driver registration failed. Check details.');
     } finally {
       setLoading(false);
     }
