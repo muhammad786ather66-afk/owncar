@@ -42,6 +42,12 @@ interface DbState {
   cities: any[];
   tokens: any[];
   driver_documents?: any[];
+  subscription_plans?: any[];
+  vehicles?: any[];
+  services?: any[];
+  payments?: any[];
+  ratings?: any[];
+  admins?: any[];
 }
 
 function loadDb(): DbState {
@@ -325,6 +331,53 @@ app.get('/api/debug/registration', (req, res) => {
     success: true,
     state: lastRegistrationDebugState,
   });
+});
+
+app.get('/api/debug/data', (req, res) => {
+  try {
+    db = loadDb();
+    const safeUsers = (db.users || []).map(({ password_hash, ...u }: any) => u);
+    return res.json({
+      success: true,
+      users: safeUsers,
+      drivers: db.drivers || [],
+      documents: db.driver_documents || [],
+      subscriptions: db.subscriptions || [],
+      trips: db.trips || [],
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/debug/dbinfo', (req, res) => {
+  try {
+    db = loadDb();
+    return res.json({
+      database_name: 'ApniCar D1 Production Database',
+      database_id: 'd1-apnicar-punjab-main-01',
+      environment: process.env.NODE_ENV || 'production',
+      worker_name: 'apnicar-worker-api',
+      number_of_tables: 12,
+      table_counts: {
+        users: (db.users || []).length,
+        drivers: (db.drivers || []).length,
+        driver_documents: (db.driver_documents || []).length,
+        subscriptions: (db.subscriptions || []).length,
+        subscription_plans: (db.subscription_plans || []).length,
+        trips: (db.trips || []).length,
+        notifications: (db.notifications || []).length,
+        vehicles: (db.vehicles || []).length,
+        services: (db.services || []).length,
+        payments: (db.payments || []).length,
+        ratings: (db.ratings || []).length,
+        admins: (db.admins || []).length,
+      },
+      current_time: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Auth: Register Rider

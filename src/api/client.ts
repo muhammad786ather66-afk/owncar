@@ -699,5 +699,7 @@ export const api = {
   getDebugCloudinary: () => request<any>('/api/debug/cloudinary'),
   getDebugSystem: () => request<any>('/api/debug/system'),
   getDebugRegistration: () => request<any>('/api/debug/registration'),
+  getDebugData: () => request<any>('/api/debug/data'),
+  getDebugDbInfo: () => request<any>('/api/debug/dbinfo'),
 };
 

@@ -27,7 +27,8 @@ import {
   Ban,
   Filter,
   ZoomIn,
-  RotateCw
+  RotateCw,
+  Database
 } from 'lucide-react';
 
 const INITIAL_DRIVERS: Driver[] = [
@@ -197,6 +198,8 @@ export const AdminDashboard: React.FC = () => {
   const [debugCloudinaryResult, setDebugCloudinaryResult] = useState<any>(null);
   const [debugSystemResult, setDebugSystemResult] = useState<any>(null);
   const [debugRegResult, setDebugRegResult] = useState<any>(null);
+  const [debugDbInfo, setDebugDbInfo] = useState<any>(null);
+  const [debugRawData, setDebugRawData] = useState<any>(null);
   const [testingDebug, setTestingDebug] = useState<boolean>(false);
 
   // Broadcast Notification Form
@@ -244,17 +247,21 @@ export const AdminDashboard: React.FC = () => {
   const runSystemDiagnostics = async () => {
     setTestingDebug(true);
     try {
-      const [dbRes, cldRes, sysRes, regRes] = await Promise.allSettled([
+      const [dbRes, cldRes, sysRes, regRes, infoRes, dataRes] = await Promise.allSettled([
         api.getDebugDatabase(),
         api.getDebugCloudinary(),
         api.getDebugSystem(),
         api.getDebugRegistration(),
+        api.getDebugDbInfo(),
+        api.getDebugData(),
       ]);
 
       if (dbRes.status === 'fulfilled') setDebugDbResult(dbRes.value);
       if (cldRes.status === 'fulfilled') setDebugCloudinaryResult(cldRes.value);
       if (sysRes.status === 'fulfilled') setDebugSystemResult(sysRes.value);
       if (regRes.status === 'fulfilled') setDebugRegResult(regRes.value);
+      if (infoRes.status === 'fulfilled') setDebugDbInfo(infoRes.value);
+      if (dataRes.status === 'fulfilled') setDebugRawData(dataRes.value);
     } catch (e: any) {
       console.error('Debug diagnostics error:', e);
     } finally {
@@ -1184,6 +1191,34 @@ export const AdminDashboard: React.FC = () => {
                 )}
               </div>
             </div>
+
+            {/* D1 Database Info & Raw Inspector */}
+            {debugDbInfo && (
+              <div className="p-6 bg-slate-900 text-slate-200 rounded-2xl border border-slate-800 space-y-4">
+                <h4 className="text-sm font-black text-emerald-400 flex items-center gap-2">
+                  <Database className="w-4 h-4 text-emerald-400" />
+                  <span>D1 Database Metadata & Table Status (/api/debug/dbinfo)</span>
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                    <span className="text-slate-500 block text-[10px]">DATABASE NAME</span>
+                    <span className="font-bold text-white">{debugDbInfo.database_name}</span>
+                  </div>
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                    <span className="text-slate-500 block text-[10px]">DATABASE ID</span>
+                    <span className="font-bold text-emerald-400 truncate block">{debugDbInfo.database_id}</span>
+                  </div>
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                    <span className="text-slate-500 block text-[10px]">WORKER ENGINE</span>
+                    <span className="font-bold text-indigo-400">{debugDbInfo.worker_name}</span>
+                  </div>
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                    <span className="text-slate-500 block text-[10px]">TOTAL TABLES</span>
+                    <span className="font-bold text-amber-400">{debugDbInfo.number_of_tables}</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
