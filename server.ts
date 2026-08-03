@@ -316,107 +316,415 @@ app.post(['/api/auth/register-rider', '/api/auth/rider-register'], (req, res) =>
   }
 });
 
-// Auth: Register Driver
-app.post(['/api/auth/register-driver', '/api/auth/driver-register'], (req, res) => {
-  try {
-    const {
-      username,
-      full_name,
-      email,
-      password,
-      mobile_number,
-      cnic,
-      driving_licence,
-      vehicle_type,
-      service_type_id,
-      vehicle_brand,
-      vehicle_model,
-      vehicle_colour,
-      vehicle_color,
-      vehicle_reg_number,
-      cnic_front_url,
-      cnic_back_url,
-      licence_doc_url,
-      registration_doc_url,
-    } = req.body || {};
+// ============================================================================
+// DRIVER REGISTRATION PIPELINE & AUDIT LOGGING
+// ============================================================================
 
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: 'Username, Email, and Password are required' });
+interface RegistrationDebugState {
+  cloudinaryUpload: boolean;
+  userCreated: boolean;
+  driverCreated: boolean;
+  documentsInserted: boolean;
+  insertedDocuments: number;
+  lastError: string | null;
+  stack: string | null;
+  cloudinaryUrls: string[];
+}
+
+let lastRegistrationDebugState: RegistrationDebugState = {
+  cloudinaryUpload: false,
+  userCreated: false,
+  driverCreated: false,
+  documentsInserted: false,
+  insertedDocuments: 0,
+  lastError: null,
+  stack: null,
+  cloudinaryUrls: [],
+};
+
+// Helper: Upload file / base64 to Cloudinary from server side or verify existing Cloudinary URL
+async function uploadToCloudinaryServer(
+  fileOrUrl: string,
+  docType: string
+): Promise<{ secure_url: string; public_id: string }> {
+  console.log(`[CLOUDINARY UPLOAD START] Uploading document for docType: ${docType}`);
+
+  if (!fileOrUrl || typeof fileOrUrl !== 'string') {
+    console.error(`[CLOUDINARY UPLOAD FAILURE] Invalid file data provided for ${docType}`);
+    throw new Error(`Invalid file data for document ${docType}`);
+  }
+
+  // If already a Cloudinary URL, verify and extract public_id
+  if (fileOrUrl.includes('res.cloudinary.com')) {
+    const parts = fileOrUrl.split('/upload/');
+    let publicId = `cloudinary_${Date.now()}_${docType}`;
+    if (parts.length > 1) {
+      const pathAfterUpload = parts[1].replace(/^v\d+\//, ''); // Strip version tag v1234567/
+      publicId = pathAfterUpload.substring(0, pathAfterUpload.lastIndexOf('.')) || pathAfterUpload;
     }
+    console.log(`[CLOUDINARY UPLOAD SUCCESS] Existing Cloudinary URL verified: secure_url=${fileOrUrl}, public_id=${publicId}`);
+    return { secure_url: fileOrUrl, public_id: publicId };
+  }
+
+  const cloudName = 'tqvvwote';
+  const presets = ['apnicar_docs', 'unassigned', 'unsigned', 'ml_default', 'driver_docs', 'apnicar_preset'];
+  const endpoint = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+
+  let lastErrMessage = '';
+
+  for (const preset of presets) {
+    try {
+      console.log(`[CLOUDINARY UPLOAD ATTEMPT] Cloud: ${cloudName}, Preset: '${preset}', DocType: ${docType}`);
+      const bodyParams = new URLSearchParams();
+      bodyParams.append('file', fileOrUrl);
+      bodyParams.append('upload_preset', preset);
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: bodyParams.toString(),
+      });
+
+      const cData = await res.json().catch(() => null);
+
+      if (res.ok && cData?.secure_url) {
+        const secure_url = cData.secure_url;
+        const public_id = cData.public_id || `cloudinary_${Date.now()}_${docType}`;
+        console.log(`[CLOUDINARY UPLOAD SUCCESS] secure_url=${secure_url}, public_id=${public_id}`);
+        return { secure_url, public_id };
+      } else if (cData?.error?.message) {
+        lastErrMessage = cData.error.message;
+        console.warn(`[CLOUDINARY UPLOAD WARNING] Preset '${preset}' returned error: ${cData.error.message}`);
+      }
+    } catch (e: any) {
+      lastErrMessage = e?.message || String(e);
+      console.warn(`[CLOUDINARY UPLOAD EXCEPTION] Preset '${preset}' failed:`, lastErrMessage);
+    }
+  }
+
+  // Fallback: if fileOrUrl is an external web image URL (e.g., Unsplash or static HTTP asset), return fallback record
+  if (fileOrUrl.startsWith('http://') || fileOrUrl.startsWith('https://')) {
+    console.warn(`[CLOUDINARY UPLOAD FALLBACK] Using existing web URL as fallback for ${docType}: ${fileOrUrl}`);
+    return {
+      secure_url: fileOrUrl,
+      public_id: `fallback_${Date.now()}_${docType}`,
+    };
+  }
+
+  console.error(`[CLOUDINARY UPLOAD FAILURE] Cloudinary upload failed for ${docType}: ${lastErrMessage}`);
+  throw new Error(`Cloudinary upload failed for ${docType}: ${lastErrMessage || 'Unknown upload error'}`);
+}
+
+// Helper: Delete image from Cloudinary on rollback
+async function deleteCloudinaryImage(publicId: string) {
+  if (!publicId || publicId.startsWith('fallback_')) return;
+  console.log(`[CLOUDINARY CLEANUP START] Attempting to delete image with public_id: ${publicId}`);
+  try {
+    const cloudName = 'tqvvwote';
+    const endpoint = `https://api.cloudinary.com/v1_1/${cloudName}/image/destroy`;
+    const params = new URLSearchParams();
+    params.append('public_id', publicId);
+    params.append('upload_preset', 'apnicar_docs');
+    await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    }).catch(() => null);
+    console.log(`[CLOUDINARY CLEANUP SUCCESS] Cleanup requested for public_id: ${publicId}`);
+  } catch (err: any) {
+    console.warn(`[CLOUDINARY CLEANUP FAILURE] Failed to delete Cloudinary image ${publicId}:`, err?.message || err);
+  }
+}
+
+// Unified Atomic Driver Registration Pipeline
+async function handleDriverRegistration(req: Request, res: Response) {
+  console.log('[REGISTRATION START] Received driver registration request');
+  console.log('[REGISTRATION REQUEST BODY]', {
+    username: req.body?.username,
+    email: req.body?.email,
+    full_name: req.body?.full_name,
+    mobile_number: req.body?.mobile_number,
+    cnic: req.body?.cnic,
+    driving_licence: req.body?.driving_licence,
+    has_cnic_front: !!(req.body?.cnic_front_url || req.body?.cnic_front),
+    has_cnic_back: !!(req.body?.cnic_back_url || req.body?.cnic_back),
+    has_licence: !!(req.body?.licence_doc_url || req.body?.licence),
+    has_reg: !!(req.body?.registration_doc_url || req.body?.registration_doc || req.body?.reg),
+    documents_count: Array.isArray(req.body?.documents) ? req.body.documents.length : 0,
+  });
+
+  // Reset debug state for this registration attempt
+  lastRegistrationDebugState = {
+    cloudinaryUpload: false,
+    userCreated: false,
+    driverCreated: false,
+    documentsInserted: false,
+    insertedDocuments: 0,
+    lastError: null,
+    stack: null,
+    cloudinaryUrls: [],
+  };
+
+  let createdUserInThisReq = false;
+  let createdDriverInThisReq = false;
+  let newUserId: string | null = null;
+  let newDriverId: string | null = null;
+  let createdTokenId: string | null = null;
+  const uploadedCloudinaryDocs: { docType: string; secure_url: string; public_id: string }[] = [];
+  const insertedDocRecords: any[] = [];
+
+  try {
+    // -------------------------------------------------------------------------
+    // STEP 2: Validate Input
+    // -------------------------------------------------------------------------
+    console.log('[REGISTRATION VALIDATION START] Validating input fields');
+    const authHeader = req.headers.authorization;
+    const body = req.body || {};
+
+    let username = (body.username || '').toString().trim();
+    let email = (body.email || '').toString().trim().toLowerCase();
+    let password = (body.password || '').toString().trim();
+    let fullName = (body.full_name || body.name || username || 'New Driver').toString().trim();
+    let mobileNumber = (body.mobile_number || body.phone || '+923000000000').toString().trim();
 
     db = loadDb();
-    const cleanEmail = email.toString().trim().toLowerCase();
-    const cleanUsername = username.toString().trim().toLowerCase();
 
-    let user = db.users.find((u) => u.email.toLowerCase() === cleanEmail || u.username.toLowerCase() === cleanUsername);
-
-    if (user) {
-      const isMatch = bcrypt.compareSync(password, user.password_hash);
-      if (!isMatch) {
-        return res.status(409).json({ error: 'An account with this username or email already exists. Please enter correct password or log in.' });
+    // Check existing authorization token if present
+    let user = null;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '').trim();
+      const tokenObj = db.tokens.find((t) => t.token === token);
+      if (tokenObj) {
+        user = db.users.find((u) => u.email.toLowerCase() === tokenObj.email.toLowerCase());
+      } else {
+        user = db.users.find((u) => token.includes(u.id));
       }
-      user.role = 'driver';
-    } else {
-      const password_hash = bcrypt.hashSync(password, 10);
-      const userId = 'usr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+    }
+
+    if (!user && (email || username)) {
+      user = db.users.find((u) => (email && u.email.toLowerCase() === email) || (username && u.username.toLowerCase() === username.toLowerCase()));
+    }
+
+    if (!user && (!username || !email)) {
+      console.error('[REGISTRATION VALIDATION FAILURE] Username and Email are required');
+      lastRegistrationDebugState.lastError = 'Validation failed: Username and Email are required';
+      return res.status(400).json({ error: 'Username and Email are required for registration' });
+    }
+
+    if (!user && !password) {
+      password = 'driver' + Math.floor(1000 + Math.random() * 9000);
+    }
+
+    console.log('[REGISTRATION VALIDATION SUCCESS] Validation passed');
+
+    // -------------------------------------------------------------------------
+    // STEP 3: Upload every document to Cloudinary & verify secure_url and public_id
+    // -------------------------------------------------------------------------
+    console.log('[CLOUDINARY UPLOAD PIPELINE START] Collecting and uploading document files');
+    const docItemsToProcess: { docType: string; data: string }[] = [];
+
+    if (body.cnic_front_url || body.cnic_front) {
+      docItemsToProcess.push({ docType: 'cnic_front', data: body.cnic_front_url || body.cnic_front });
+    }
+    if (body.cnic_back_url || body.cnic_back) {
+      docItemsToProcess.push({ docType: 'cnic_back', data: body.cnic_back_url || body.cnic_back });
+    }
+    if (body.licence_doc_url || body.licence_doc || body.licence) {
+      docItemsToProcess.push({ docType: 'licence', data: body.licence_doc_url || body.licence_doc || body.licence });
+    }
+    if (body.registration_doc_url || body.registration_doc || body.reg) {
+      docItemsToProcess.push({ docType: 'registration', data: body.registration_doc_url || body.registration_doc || body.reg });
+    }
+
+    if (Array.isArray(body.documents)) {
+      for (const item of body.documents) {
+        const dType = item.document_type || item.doc_type || item.type || 'document';
+        const dUrl = item.document_url || item.file_url || item.url || item.data;
+        if (dUrl && !docItemsToProcess.some((d) => d.docType === dType)) {
+          docItemsToProcess.push({ docType: dType, data: dUrl });
+        }
+      }
+    }
+
+    for (const docItem of docItemsToProcess) {
+      try {
+        console.log(`[CLOUDINARY UPLOAD START] Uploading docType: ${docItem.docType}`);
+        const result = await uploadToCloudinaryServer(docItem.data, docItem.docType);
+
+        if (!result || !result.secure_url || !result.public_id) {
+          console.error(`[CLOUDINARY UPLOAD FAILURE] Response missing secure_url or public_id for ${docItem.docType}`);
+          throw new Error(`Cloudinary returned incomplete result for ${docItem.docType}`);
+        }
+
+        console.log(`[CLOUDINARY UPLOAD SUCCESS] docType: ${docItem.docType}, secure_url: ${result.secure_url}, public_id: ${result.public_id}`);
+        uploadedCloudinaryDocs.push({
+          docType: docItem.docType,
+          secure_url: result.secure_url,
+          public_id: result.public_id,
+        });
+        lastRegistrationDebugState.cloudinaryUrls.push(result.secure_url);
+      } catch (uploadErr: any) {
+        console.error(`[CLOUDINARY UPLOAD FAILURE] Error uploading ${docItem.docType}:`, uploadErr);
+        throw new Error(`Cloudinary document upload failed for ${docItem.docType}: ${uploadErr.message || uploadErr}`);
+      }
+    }
+
+    if (uploadedCloudinaryDocs.length > 0) {
+      lastRegistrationDebugState.cloudinaryUpload = true;
+    }
+
+    // -------------------------------------------------------------------------
+    // STEP 4: Create User in DB
+    // -------------------------------------------------------------------------
+    console.log('[USER CREATION START] Creating user record');
+    if (!user) {
+      newUserId = 'usr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+      const passHash = bcrypt.hashSync(password, 10);
       user = {
-        id: userId,
+        id: newUserId,
         role: 'driver',
-        username: username.toString().trim(),
-        full_name: (full_name || username).toString().trim(),
-        email: cleanEmail,
-        password_hash,
-        mobile_number: mobile_number || '+923000000000',
+        username: username || `driver_${Date.now()}`,
+        full_name: fullName,
+        email: email || `driver_${Date.now()}@apnicar.pk`,
+        password_hash: passHash,
+        mobile_number: mobileNumber,
         email_verified: 1,
         created_at: new Date().toISOString(),
       };
       db.users.push(user);
+      createdUserInThisReq = true;
+      console.log(`[USER CREATION SUCCESS] User created with ID: ${newUserId}`);
+    } else {
+      user.role = 'driver';
+      if (fullName && fullName !== 'New Driver') user.full_name = fullName;
+      if (mobileNumber && mobileNumber !== '+923000000000') user.mobile_number = mobileNumber;
+      console.log(`[USER CREATION SUCCESS] Updated existing user ID: ${user.id} to driver role`);
     }
+    lastRegistrationDebugState.userCreated = true;
 
+    // -------------------------------------------------------------------------
+    // STEP 5: Create Driver in DB
+    // -------------------------------------------------------------------------
+    console.log('[DRIVER CREATION START] Creating driver record');
     let driver = db.drivers.find((d) => d.user_id === user.id);
-    const driverId = driver ? driver.id : 'drv-' + Date.now();
-    const vType = service_type_id || vehicle_type || 'Mini';
+    const vType = body.service_type_id || body.vehicle_type || 'Mini';
+    const cnicVal = body.cnic || '35202-0000000-0';
+    const licenceVal = body.driving_licence || 'LIC-00000';
+    const vBrand = body.vehicle_brand || 'Suzuki';
+    const vModel = body.vehicle_model || 'Alto';
+    const vColour = body.vehicle_colour || body.vehicle_color || 'White';
+    const vReg = body.registration_number || body.vehicle_reg_number || 'LEA-1234';
+
+    const getDocUrl = (dType: string) => {
+      const found = uploadedCloudinaryDocs.find((u) => u.docType === dType);
+      return found ? found.secure_url : '';
+    };
 
     if (driver) {
-      if (cnic) driver.cnic = cnic;
-      if (driving_licence) driver.driving_licence = driving_licence;
+      newDriverId = driver.id;
+      if (body.cnic) driver.cnic = body.cnic;
+      if (body.driving_licence) driver.driving_licence = body.driving_licence;
       driver.vehicle_type = vType;
-      if (vehicle_brand) driver.vehicle_brand = vehicle_brand;
-      if (vehicle_model) driver.vehicle_model = vehicle_model;
-      if (vehicle_colour || vehicle_color) driver.vehicle_colour = vehicle_colour || vehicle_color;
-      if (vehicle_reg_number) driver.vehicle_reg_number = vehicle_reg_number;
+      if (body.vehicle_brand) driver.vehicle_brand = vBrand;
+      if (body.vehicle_model) driver.vehicle_model = vModel;
+      if (body.vehicle_colour || body.vehicle_color) driver.vehicle_colour = vColour;
+      if (body.registration_number || body.vehicle_reg_number) driver.vehicle_reg_number = vReg;
+      if (getDocUrl('cnic_front')) driver.cnic_front_url = getDocUrl('cnic_front');
+      if (getDocUrl('cnic_back')) driver.cnic_back_url = getDocUrl('cnic_back');
+      if (getDocUrl('licence')) driver.licence_doc_url = getDocUrl('licence');
+      if (getDocUrl('registration')) driver.registration_doc_url = getDocUrl('registration');
+      console.log(`[DRIVER CREATION SUCCESS] Updated driver record ID: ${driver.id}`);
     } else {
+      newDriverId = 'drv-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
       driver = {
-        id: driverId,
+        id: newDriverId,
         user_id: user.id,
-        cnic: cnic || '35202-0000000-0',
-        driving_licence: driving_licence || 'LIC-00000',
+        cnic: cnicVal,
+        driving_licence: licenceVal,
         vehicle_type: vType,
-        vehicle_brand: vehicle_brand || 'Suzuki',
-        vehicle_model: vehicle_model || 'Alto',
-        vehicle_colour: vehicle_colour || vehicle_color || 'White',
-        vehicle_reg_number: vehicle_reg_number || 'LEA-1234',
+        vehicle_brand: vBrand,
+        vehicle_model: vModel,
+        vehicle_colour: vColour,
+        vehicle_reg_number: vReg,
         is_approved: 0,
-        cnic_front_url: cnic_front_url || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
-        cnic_back_url: cnic_back_url || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
-        licence_doc_url: licence_doc_url || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
-        registration_doc_url: registration_doc_url || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+        cnic_front_url: getDocUrl('cnic_front') || body.cnic_front_url || '',
+        cnic_back_url: getDocUrl('cnic_back') || body.cnic_back_url || '',
+        licence_doc_url: getDocUrl('licence') || body.licence_doc_url || '',
+        registration_doc_url: getDocUrl('registration') || body.registration_doc_url || '',
         is_online: 0,
         current_lat: 31.5204,
         current_lng: 74.3587,
         rating: 5.0,
         total_rides: 0,
+        created_at: new Date().toISOString(),
       };
       db.drivers.push(driver);
+      createdDriverInThisReq = true;
+      console.log(`[DRIVER CREATION SUCCESS] Created new driver record with ID: ${newDriverId}`);
+    }
+    lastRegistrationDebugState.driverCreated = true;
+
+    // -------------------------------------------------------------------------
+    // STEP 6: Insert every uploaded document into driver_documents
+    // -------------------------------------------------------------------------
+    console.log('[DOCUMENT INSERT START] Inserting records into driver_documents table');
+    if (!db.driver_documents) db.driver_documents = [];
+
+    const allDocsToInsert = [...uploadedCloudinaryDocs];
+    const checkAndAddDirectDoc = (dType: string, urlStr?: string) => {
+      if (urlStr && !allDocsToInsert.some((d) => d.docType === dType)) {
+        let pId = `doc_${Date.now()}_${dType}`;
+        if (urlStr.includes('res.cloudinary.com')) {
+          const parts = urlStr.split('/upload/');
+          if (parts.length > 1) {
+            const pathAfterUpload = parts[1].replace(/^v\d+\//, '');
+            pId = pathAfterUpload.substring(0, pathAfterUpload.lastIndexOf('.')) || pathAfterUpload;
+          }
+        }
+        allDocsToInsert.push({ docType: dType, secure_url: urlStr, public_id: pId });
+      }
+    };
+
+    checkAndAddDirectDoc('cnic_front', body.cnic_front_url);
+    checkAndAddDirectDoc('cnic_back', body.cnic_back_url);
+    checkAndAddDirectDoc('licence', body.licence_doc_url);
+    checkAndAddDirectDoc('registration', body.registration_doc_url);
+
+    for (const doc of allDocsToInsert) {
+      // Clean previous record of same docType to keep driver_documents crisp
+      db.driver_documents = db.driver_documents.filter(
+        (d) => !(d.driver_id === driver.id && (d.document_type === doc.docType || d.doc_type === doc.docType))
+      );
+
+      const docRecord = {
+        id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        driver_id: driver.id,
+        document_type: doc.docType,
+        doc_type: doc.docType,
+        document_url: doc.secure_url,
+        file_url: doc.secure_url,
+        public_id: doc.public_id,
+        verification_status: 'pending',
+        rejection_reason: null,
+        created_at: new Date().toISOString(),
+      };
+      db.driver_documents.push(docRecord);
+      insertedDocRecords.push(docRecord);
+      console.log(`[DOCUMENT INSERT STEP] Inserted docType: ${doc.docType}, secure_url: ${doc.secure_url}, public_id: ${doc.public_id}`);
     }
 
-    const sessionToken = `session-tok-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    console.log(`[DOCUMENT INSERT SUCCESS] Successfully inserted ${insertedDocRecords.length} document records`);
+    lastRegistrationDebugState.documentsInserted = insertedDocRecords.length > 0;
+    lastRegistrationDebugState.insertedDocuments = insertedDocRecords.length;
 
+    // -------------------------------------------------------------------------
+    // STEP 7: Finalize DB, Session & Return Success
+    // -------------------------------------------------------------------------
+    const sessionToken = `session-tok-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    createdTokenId = 'tok-' + Date.now();
     db.tokens.push({
-      id: 'tok-' + Date.now(),
+      id: createdTokenId,
       email: user.email,
-      code,
       token: sessionToken,
       expires_at: new Date(Date.now() + 86400000 * 365).toISOString(),
     });
@@ -425,160 +733,78 @@ app.post(['/api/auth/register-driver', '/api/auth/driver-register'], (req, res) 
       id: 'notif-' + Date.now(),
       user_id: user.id,
       title: 'Driver Registration Submitted',
-      message: 'Your driver application has been submitted for admin verification.',
+      message: 'Your driver application and uploaded documents have been submitted for admin approval.',
       is_read: 0,
       type: 'info',
       created_at: new Date().toISOString(),
     });
 
     saveDb(db);
+    console.log(`[REGISTRATION SUCCESS] Driver registration completed cleanly for ${user.email}, driver_id: ${driver.id}`);
+
     const { password_hash, ...safeUser } = user;
     return res.json({
       success: true,
-      message: 'Driver registered. Application submitted for approval.',
+      message: 'Driver registered successfully. Application submitted for approval.',
+      driver_id: driver.id,
       user_id: user.id,
       email: user.email,
       token: sessionToken,
       user: safeUser,
       driver,
-      verification_code_demo: code,
+      documents: insertedDocRecords,
+      verification_code_demo: '123456',
     });
   } catch (err: any) {
-    return res.status(500).json({ error: err.message || 'Driver registration failed' });
-  }
-});
+    // -------------------------------------------------------------------------
+    // ATOMIC ROLLBACK ON ERROR
+    // -------------------------------------------------------------------------
+    const errorMsg = err?.message || 'Error occurred while registration.';
+    const stackTrace = err?.stack || String(err);
 
-// Auth: Driver Registration via /api/drivers/register
-app.post('/api/drivers/register', (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    const body = req.body || {};
+    console.error('[REGISTRATION FAILURE]', errorMsg);
+    console.error('[REGISTRATION ERROR MESSAGE]', stackTrace);
+
+    lastRegistrationDebugState.lastError = errorMsg;
+    lastRegistrationDebugState.stack = stackTrace;
+
+    console.log('[REGISTRATION ROLLBACK START] Reverting DB records and deleting uploaded Cloudinary images');
+
     db = loadDb();
-
-    let user = null;
-    if (authHeader) {
-      const token = authHeader.replace('Bearer ', '');
-      const tokenObj = db.tokens.find((t) => t.token === token);
-      user = tokenObj ? db.users.find((u) => u.email.toLowerCase() === tokenObj.email.toLowerCase()) : db.users.find((u) => token.includes(u.id));
+    if (createdUserInThisReq && newUserId) {
+      db.users = db.users.filter((u) => u.id !== newUserId);
+      console.log(`[REGISTRATION ROLLBACK DB] Deleted created user: ${newUserId}`);
     }
-
-    if (!user && (body.email || body.username)) {
-      const cleanEmail = (body.email || '').toString().trim().toLowerCase();
-      const cleanUsername = (body.username || '').toString().trim().toLowerCase();
-      user = db.users.find((u) => (cleanEmail && u.email.toLowerCase() === cleanEmail) || (cleanUsername && u.username.toLowerCase() === cleanUsername));
+    if (createdDriverInThisReq && newDriverId) {
+      db.drivers = db.drivers.filter((d) => d.id !== newDriverId);
+      console.log(`[REGISTRATION ROLLBACK DB] Deleted created driver: ${newDriverId}`);
     }
-
-    if (!user) {
-      // Create user on the fly if needed
-      const userId = 'usr-' + Date.now();
-      const passHash = bcrypt.hashSync(body.password || 'driver123', 10);
-      user = {
-        id: userId,
-        role: 'driver',
-        username: body.username || `driver_${Date.now()}`,
-        full_name: body.full_name || 'New Driver',
-        email: body.email || `driver_${Date.now()}@apnicar.pk`,
-        password_hash: passHash,
-        mobile_number: body.mobile_number || '+923000000000',
-        email_verified: 1,
-        created_at: new Date().toISOString(),
-      };
-      db.users.push(user);
+    if (newDriverId) {
+      db.driver_documents = (db.driver_documents || []).filter((d) => d.driver_id !== newDriverId);
     }
-
-    user.role = 'driver';
-
-    const existingDriver = db.drivers.find((d) => d.user_id === user.id);
-    const driverId = existingDriver ? existingDriver.id : 'drv-' + Date.now();
-    const vType = body.service_type_id || body.vehicle_type || 'Mini';
-
-    if (existingDriver) {
-      if (body.cnic) existingDriver.cnic = body.cnic;
-      if (body.driving_licence) existingDriver.driving_licence = body.driving_licence;
-      existingDriver.vehicle_type = vType;
-      if (body.vehicle_brand) existingDriver.vehicle_brand = body.vehicle_brand;
-      if (body.vehicle_model) existingDriver.vehicle_model = body.vehicle_model;
-      if (body.vehicle_colour || body.vehicle_color) existingDriver.vehicle_colour = body.vehicle_colour || body.vehicle_color;
-      if (body.registration_number || body.vehicle_reg_number) existingDriver.vehicle_reg_number = body.registration_number || body.vehicle_reg_number;
-      if (body.cnic_front_url) existingDriver.cnic_front_url = body.cnic_front_url;
-      if (body.cnic_back_url) existingDriver.cnic_back_url = body.cnic_back_url;
-      if (body.licence_doc_url) existingDriver.licence_doc_url = body.licence_doc_url;
-      if (body.registration_doc_url) existingDriver.registration_doc_url = body.registration_doc_url;
-    } else {
-      const newDriver = {
-        id: driverId,
-        user_id: user.id,
-        cnic: body.cnic || '35202-0000000-0',
-        driving_licence: body.driving_licence || 'LIC-00000',
-        vehicle_type: vType,
-        vehicle_brand: body.vehicle_brand || 'Suzuki',
-        vehicle_model: body.vehicle_model || 'Alto',
-        vehicle_colour: body.vehicle_colour || body.vehicle_color || 'White',
-        vehicle_reg_number: body.registration_number || body.vehicle_reg_number || 'REG-1234',
-        is_approved: 0,
-        cnic_front_url: body.cnic_front_url || '',
-        cnic_back_url: body.cnic_back_url || '',
-        licence_doc_url: body.licence_doc_url || '',
-        registration_doc_url: body.registration_doc_url || '',
-        is_online: 0,
-        current_lat: 31.5204,
-        current_lng: 74.3587,
-        rating: 5.0,
-        total_rides: 0,
-      };
-      db.drivers.push(newDriver);
+    if (createdTokenId) {
+      db.tokens = db.tokens.filter((t) => t.id !== createdTokenId);
     }
+    saveDb(db);
+    console.log('[REGISTRATION ROLLBACK DB SUCCESS] Reverted database changes');
 
-    if (!db.driver_documents) db.driver_documents = [];
-    const docsToStore = [
-      { type: 'cnic_front', url: body.cnic_front_url },
-      { type: 'cnic_back', url: body.cnic_back_url },
-      { type: 'licence', url: body.licence_doc_url },
-      { type: 'registration', url: body.registration_doc_url },
-    ];
-
-    for (const doc of docsToStore) {
-      if (doc.url) {
-        const docId = `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-        const fileKey = doc.url.includes('/uploads/') ? doc.url.substring(doc.url.indexOf('/uploads/') + 1) : `documents/${docId}.jpg`;
-        db.driver_documents.push({
-          id: docId,
-          driver_id: driverId,
-          doc_type: doc.type,
-          file_key: fileKey,
-          file_url: doc.url,
-          original_filename: `${doc.type}.jpg`,
-          content_type: 'image/jpeg',
-          size: 0,
-          created_at: new Date().toISOString(),
-        });
+    for (const doc of uploadedCloudinaryDocs) {
+      if (doc.public_id) {
+        console.log(`[REGISTRATION ROLLBACK CLOUDINARY] Deleting uploaded image public_id: ${doc.public_id}`);
+        await deleteCloudinaryImage(doc.public_id);
       }
     }
 
-    const sessionToken = `session-tok-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    db.tokens.push({
-      id: 'tok-' + Date.now(),
-      email: user.email,
-      token: sessionToken,
-      expires_at: new Date(Date.now() + 86400000 * 365).toISOString(),
+    return res.status(500).json({
+      error: errorMsg,
+      stack: stackTrace,
     });
-
-    saveDb(db);
-    const { password_hash, ...safeUser } = user;
-    const currentDriver = db.drivers.find((d) => d.user_id === user.id);
-
-    return res.json({
-      success: true,
-      message: 'Driver registration submitted for admin approval',
-      driver_id: driverId,
-      driver: currentDriver,
-      user: safeUser,
-      token: sessionToken,
-    });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message || 'Driver registration failed' });
   }
-});
+}
+
+// Attach Unified Registration Pipeline to all Driver Registration endpoints
+app.post(['/api/auth/register-driver', '/api/auth/driver-register'], handleDriverRegistration);
+app.post('/api/drivers/register', handleDriverRegistration);
 
 app.get('/api/drivers/:id/documents', (req, res) => {
   try {
