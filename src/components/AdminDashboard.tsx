@@ -269,6 +269,23 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleSeedDatabase = async () => {
+    try {
+      setLoading(true);
+      const res = await api.seedDatabase();
+      showToast(
+        'success',
+        `Database seeded with live D1 records! (${res.counts?.users || 0} Users, ${res.counts?.drivers || 0} Drivers, ${res.counts?.trips || 0} Trips)`
+      );
+      await fetchAdminData(true);
+      await runSystemDiagnostics();
+    } catch (err: any) {
+      showToast('error', 'Seeding failed: ' + (err.message || 'Error seeding database'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchAdminData = async (isManualOrInitial = false) => {
     if (isManualOrInitial) setLoading(true);
     try {
@@ -526,6 +543,15 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={handleSeedDatabase}
+              disabled={loading}
+              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-amber-300 font-bold text-xs rounded-xl border border-slate-700 shadow-md flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+              title="Seed live D1 database with sample drivers, riders, trips, and Cloudinary document records"
+            >
+              <Database className="w-3.5 h-3.5 text-amber-400" />
+              <span>Seed D1 Database</span>
+            </button>
             <button
               onClick={() => fetchAdminData(true)}
               disabled={loading}
@@ -1190,6 +1216,26 @@ export const AdminDashboard: React.FC = () => {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Diagnostic Actions */}
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={runSystemDiagnostics}
+                disabled={testingDebug}
+                className="px-4 py-2 bg-slate-900 text-slate-100 text-xs font-bold rounded-xl border border-slate-700 hover:bg-slate-800 flex items-center gap-2"
+              >
+                <RotateCw className={`w-3.5 h-3.5 ${testingDebug ? 'animate-spin text-amber-400' : ''}`} />
+                <span>Re-run Full Diagnostics</span>
+              </button>
+              <button
+                onClick={handleSeedDatabase}
+                disabled={loading}
+                className="px-4 py-2 bg-amber-500 text-slate-950 text-xs font-black rounded-xl hover:bg-amber-400 flex items-center gap-2 shadow"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>Reset & Seed D1 Live Data</span>
+              </button>
             </div>
 
             {/* D1 Database Info & Raw Inspector */}

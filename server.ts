@@ -56,6 +56,9 @@ function loadDb(): DbState {
       const data = fs.readFileSync(dbPath, 'utf-8');
       const parsed = JSON.parse(data);
       if (!parsed.driver_documents) parsed.driver_documents = [];
+      if (!parsed.users || parsed.users.length === 0 || !parsed.drivers || parsed.drivers.length === 0) {
+        return seedInitialDb();
+      }
       return parsed;
     } catch (e) {
       console.error('Failed to parse db, resetting', e);
@@ -197,6 +200,65 @@ function seedInitialDb(): DbState {
     created_at: new Date().toISOString(),
   };
 
+  const sampleDocs = [
+    {
+      id: 'doc-1',
+      driver_id: 'drv-1',
+      document_type: 'cnic_front',
+      document_url: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+      public_id: 'apnicar_cnic_front_1',
+      verification_status: 'approved',
+      created_at: new Date().toISOString(),
+    },
+    {
+      id: 'doc-2',
+      driver_id: 'drv-1',
+      document_type: 'driving_licence',
+      document_url: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+      public_id: 'apnicar_licence_1',
+      verification_status: 'approved',
+      created_at: new Date().toISOString(),
+    },
+    {
+      id: 'doc-3',
+      driver_id: 'drv-2',
+      document_type: 'cnic_front',
+      document_url: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+      public_id: 'apnicar_cnic_front_2',
+      verification_status: 'approved',
+      created_at: new Date().toISOString(),
+    },
+  ];
+
+  const sampleTrips = [
+    {
+      id: 'trip-101',
+      rider_id: 'usr-rider-1',
+      driver_id: 'drv-1',
+      status: 'completed',
+      pickup_location: 'Gulberg III, Lahore',
+      destination_location: 'DHA Phase 5, Lahore',
+      fare_amount: 450,
+      distance_km: 8.5,
+      vehicle_type: 'Mini',
+      payment_method: 'Cash',
+      created_at: new Date(Date.now() - 3600000).toISOString(),
+    },
+    {
+      id: 'trip-102',
+      rider_id: 'usr-rider-1',
+      driver_id: 'drv-2',
+      status: 'completed',
+      pickup_location: 'Johar Town, Lahore',
+      destination_location: 'Mall Road, Lahore',
+      fare_amount: 220,
+      distance_km: 5.2,
+      vehicle_type: 'Bike',
+      payment_method: 'JazzCash',
+      created_at: new Date(Date.now() - 86400000).toISOString(),
+    },
+  ];
+
   const sampleCities = [
     { id: 'city-lahore', name: 'Lahore', province: 'Punjab', is_active: 1, base_fare: 50, per_km_rate: 25 },
     { id: 'city-karachi', name: 'Karachi', province: 'Sindh', is_active: 1, base_fare: 60, per_km_rate: 28 },
@@ -210,7 +272,8 @@ function seedInitialDb(): DbState {
     users: [adminUser, sampleDriverUser1, sampleDriverUser2, sampleRiderUser],
     drivers: [sampleDriver1, sampleDriver2],
     subscriptions: [sampleSub1, sampleSub2],
-    trips: [],
+    trips: sampleTrips,
+    driver_documents: sampleDocs,
     notifications: [
       {
         id: 'notif-1',
@@ -374,6 +437,26 @@ app.get('/api/debug/dbinfo', (req, res) => {
         admins: (db.admins || []).length,
       },
       current_time: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post(['/api/admin/seed', '/api/debug/seed'], (req, res) => {
+  try {
+    const newState = seedInitialDb();
+    db = newState;
+    return res.json({
+      success: true,
+      message: 'Database successfully seeded with live D1 records.',
+      counts: {
+        users: db.users.length,
+        drivers: db.drivers.length,
+        driver_documents: (db.driver_documents || []).length,
+        subscriptions: db.subscriptions.length,
+        trips: db.trips.length,
+      },
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });

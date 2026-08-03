@@ -683,5 +683,6 @@ export const api = {
   getDebugRegistration: () => request<any>('/api/debug/registration'),
   getDebugData: () => request<any>('/api/debug/data'),
   getDebugDbInfo: () => request<any>('/api/debug/dbinfo'),
+  seedDatabase: () => request<any>('/api/admin/seed', { method: 'POST' }),
 };
 
