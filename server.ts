@@ -465,10 +465,12 @@ app.post(['/api/admin/seed', '/api/debug/seed'], (req, res) => {
 
 // Auth: Register Rider
 app.post(['/api/auth/register-rider', '/api/auth/rider-register'], (req, res) => {
+  console.log('[RIDER REGISTRATION START] Received rider registration request');
   try {
     const { username, full_name, email, password, mobile_number } = req.body || {};
     if (!username || !email || !password) {
-      return res.status(400).json({ error: 'Username, Email, and Password are required' });
+      console.error('[RIDER REGISTRATION VALIDATION FAILURE] Missing required fields');
+      return res.status(400).json({ success: false, error: 'Username, Email, and Password are required', details: 'Validation failed: Username, Email, and Password must be provided.' });
     }
 
     db = loadDb();
@@ -478,11 +480,12 @@ app.post(['/api/auth/register-rider', '/api/auth/rider-register'], (req, res) =>
     let user = db.users.find((u) => u.email.toLowerCase() === cleanEmail || u.username.toLowerCase() === cleanUsername);
 
     if (user) {
-      // Check if password matches
       const isMatch = bcrypt.compareSync(password, user.password_hash);
       if (!isMatch) {
-        return res.status(409).json({ error: 'An account with this username or email already exists. Please enter correct password or log in.' });
+        console.warn(`[RIDER REGISTRATION CONFLICT] User exists (${cleanEmail}) but password mismatch`);
+        return res.status(409).json({ success: false, error: 'An account with this username or email already exists. Please enter correct password or log in.', details: 'Account conflict: User already registered.' });
       }
+      console.log(`[RIDER REGISTRATION MATCH] Existing user authenticated: ${user.id}`);
     } else {
       const password_hash = bcrypt.hashSync(password, 10);
       const userId = 'usr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
@@ -498,6 +501,7 @@ app.post(['/api/auth/register-rider', '/api/auth/rider-register'], (req, res) =>
         created_at: new Date().toISOString(),
       };
       db.users.push(user);
+      console.log(`[RIDER REGISTRATION USER CREATED] Inserted rider user record: ${userId}`);
     }
 
     const sessionToken = `session-tok-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -522,6 +526,7 @@ app.post(['/api/auth/register-rider', '/api/auth/rider-register'], (req, res) =>
     });
 
     saveDb(db);
+    console.log(`[RIDER REGISTRATION SUCCESS] Registration completed for ${user.email}`);
     const { password_hash, ...safeUser } = user;
     return res.json({
       success: true,
@@ -533,7 +538,9 @@ app.post(['/api/auth/register-rider', '/api/auth/rider-register'], (req, res) =>
       verification_code_demo: code,
     });
   } catch (err: any) {
-    return res.status(500).json({ error: err.message || 'Registration failed' });
+    const errorMsg = err?.message || 'Rider registration failed';
+    console.error('[RIDER REGISTRATION EXCEPTION]', errorMsg, err?.stack);
+    return res.status(500).json({ success: false, error: errorMsg, details: errorMsg, stack: err?.stack });
   }
 });
 
@@ -1016,8 +1023,11 @@ async function handleDriverRegistration(req: Request, res: Response) {
     }
 
     return res.status(500).json({
+      success: false,
       error: errorMsg,
+      details: errorMsg,
       stack: stackTrace,
+      debugState: lastRegistrationDebugState,
     });
   }
 }
