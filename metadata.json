@@ -1,6 +1,6 @@
 {
-  "name": "Apni Car",
-  "description": "Production-ready PWA Ride-Hailing Platform with Zero Commission for Drivers and Seamless Rides for Passengers.",
+  "name": "Apni Car Punjab",
+  "description": "Production-ready Ride-Hailing Platform with Zero Commission for Drivers and Seamless Rides across Punjab Pakistan.",
   "requestFramePermissions": [
     "geolocation"
   ],

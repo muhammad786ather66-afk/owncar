@@ -12,6 +12,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { RideHistory } from './components/RideHistory';
 import { ProfileModal } from './components/ProfileModal';
 import { InfoPagesModal } from './components/InfoPagesModal';
+import { SubscriptionModal } from './components/SubscriptionModal';
 import { Shield, Sparkles, Car, CheckCircle, Smartphone, MapPin, FileText, Info, Mail } from 'lucide-react';
 
 export default function App() {
@@ -25,6 +26,7 @@ export default function App() {
   const [showNotifDrawer, setShowNotifDrawer] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [infoTab, setInfoTab] = useState<'about' | 'terms' | 'privacy' | 'contact'>('about');
 
   const openInfoPage = (tab: 'about' | 'terms' | 'privacy' | 'contact' = 'about') => {
@@ -164,6 +166,21 @@ export default function App() {
         }}
         onHome={() => setCurrentView('dashboard')}
         onOpenInfo={(tab) => openInfoPage(tab)}
+        onOpenRideHistory={() => {
+          if (!user) {
+            setShowAuthModal(true);
+          } else {
+            setCurrentView('history');
+          }
+        }}
+        onOpenSubscription={() => {
+          if (!user) {
+            setShowAuthModal(true);
+          } else {
+            setShowSubscriptionModal(true);
+          }
+        }}
+        currentView={currentView}
       />
 
       {/* Main Content View */}
@@ -333,6 +350,25 @@ export default function App() {
         onClose={() => setShowInfoModal(false)}
         defaultTab={infoTab}
       />
+
+      {/* Subscription Modal */}
+      {driver && (
+        <SubscriptionModal
+          isOpen={showSubscriptionModal}
+          onClose={() => setShowSubscriptionModal(false)}
+          driverId={driver.id}
+          isApproved={driver.status === 'approved'}
+          onSuccess={() => {
+            api.getDriverMe().then((res: any) => {
+              const updated = res.driver || res;
+              if (updated && updated.id) {
+                setDriver(updated);
+                localStorage.setItem('apnicar_driver', JSON.stringify(updated));
+              }
+            }).catch(() => {});
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -106,7 +106,7 @@ export function formatVehicleRegNumber(input: string): string {
   const letters = str.replace(/[^A-Z]/g, '');
   const numbers = str.replace(/[^0-9]/g, '');
   if (letters && numbers) {
-    return `${letters}- ${numbers}`;
+    return `${letters}-${numbers}`;
   }
   return str;
 }
@@ -117,7 +117,7 @@ export function formatLicenceNumber(input: string): string {
   const letters = str.replace(/[^A-Z]/g, '');
   const numbers = str.replace(/[^0-9]/g, '');
   if (letters && numbers) {
-    return `${letters}- ${numbers}`;
+    return `${letters}-${numbers}`;
   }
   return str;
 }
