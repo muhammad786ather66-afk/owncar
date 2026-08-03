@@ -243,73 +243,81 @@ app.get('/api/health', (req, res) => {
 });
 
 // Auth: Register Rider
-app.post('/api/auth/register-rider', (req, res) => {
+app.post(['/api/auth/register-rider', '/api/auth/rider-register'], (req, res) => {
   try {
-    const { username, full_name, email, password, mobile_number } = req.body;
-    if (!username || !full_name || !email || !password || !mobile_number) {
-      return res.status(400).json({ error: 'All fields are required' });
+    const { username, full_name, email, password, mobile_number } = req.body || {};
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: 'Username, Email, and Password are required' });
     }
 
     db = loadDb();
-    const existingEmail = db.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-    if (existingEmail) {
-      return res.status(400).json({ error: 'Email address is already registered' });
-    }
-    const existingUser = db.users.find((u) => u.username.toLowerCase() === username.toLowerCase());
-    if (existingUser) {
-      return res.status(400).json({ error: 'Username is already taken' });
+    const cleanEmail = email.toString().trim().toLowerCase();
+    const cleanUsername = username.toString().trim().toLowerCase();
+
+    let user = db.users.find((u) => u.email.toLowerCase() === cleanEmail || u.username.toLowerCase() === cleanUsername);
+
+    if (user) {
+      // Check if password matches
+      const isMatch = bcrypt.compareSync(password, user.password_hash);
+      if (!isMatch) {
+        return res.status(409).json({ error: 'An account with this username or email already exists. Please enter correct password or log in.' });
+      }
+    } else {
+      const password_hash = bcrypt.hashSync(password, 10);
+      const userId = 'usr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+      user = {
+        id: userId,
+        role: 'rider',
+        username: username.toString().trim(),
+        full_name: (full_name || username).toString().trim(),
+        email: cleanEmail,
+        password_hash,
+        mobile_number: mobile_number || '+923000000000',
+        email_verified: 1,
+        created_at: new Date().toISOString(),
+      };
+      db.users.push(user);
     }
 
-    const password_hash = bcrypt.hashSync(password, 10);
-    const userId = 'usr-' + Date.now();
+    const sessionToken = `session-tok-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
-    const newUser = {
-      id: userId,
-      role: 'rider',
-      username,
-      full_name,
-      email,
-      password_hash,
-      mobile_number,
-      email_verified: 0,
-      created_at: new Date().toISOString(),
-    };
-
-    db.users.push(newUser);
     db.tokens.push({
       id: 'tok-' + Date.now(),
-      email,
+      email: user.email,
       code,
-      token: 'verif-' + Date.now(),
-      expires_at: new Date(Date.now() + 3600000).toISOString(),
+      token: sessionToken,
+      expires_at: new Date(Date.now() + 86400000 * 365).toISOString(),
     });
 
     db.notifications.push({
       id: 'notif-' + Date.now(),
-      user_id: userId,
-      title: 'Email Verification Code',
-      message: `Your verification code is: ${code}. Please verify your email to log in.`,
+      user_id: user.id,
+      title: 'Welcome to Apni Car',
+      message: 'Account created successfully! Enjoy 0% commission rides across Punjab.',
       is_read: 0,
       type: 'info',
       created_at: new Date().toISOString(),
     });
 
     saveDb(db);
+    const { password_hash, ...safeUser } = user;
     return res.json({
       success: true,
-      message: 'Registration successful. Please check your email for verification code.',
-      user_id: userId,
-      email,
-      verification_code_demo: code, // Demo convenience helper
+      message: 'Registration successful. Welcome to Apni Car!',
+      user_id: user.id,
+      email: user.email,
+      token: sessionToken,
+      user: safeUser,
+      verification_code_demo: code,
     });
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message || 'Registration failed' });
   }
 });
 
 // Auth: Register Driver
-app.post('/api/auth/register-driver', (req, res) => {
+app.post(['/api/auth/register-driver', '/api/auth/driver-register'], (req, res) => {
   try {
     const {
       username,
@@ -320,107 +328,123 @@ app.post('/api/auth/register-driver', (req, res) => {
       cnic,
       driving_licence,
       vehicle_type,
+      service_type_id,
       vehicle_brand,
       vehicle_model,
       vehicle_colour,
+      vehicle_color,
       vehicle_reg_number,
       cnic_front_url,
       cnic_back_url,
       licence_doc_url,
       registration_doc_url,
-    } = req.body;
+    } = req.body || {};
 
-    if (
-      !username ||
-      !full_name ||
-      !email ||
-      !password ||
-      !mobile_number ||
-      !cnic ||
-      !driving_licence ||
-      !vehicle_type ||
-      !vehicle_reg_number
-    ) {
-      return res.status(400).json({ error: 'Missing required driver details' });
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: 'Username, Email, and Password are required' });
     }
 
     db = loadDb();
-    if (db.users.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
-      return res.status(400).json({ error: 'Email address is already registered' });
-    }
-    if (db.users.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
-      return res.status(400).json({ error: 'Username is already taken' });
+    const cleanEmail = email.toString().trim().toLowerCase();
+    const cleanUsername = username.toString().trim().toLowerCase();
+
+    let user = db.users.find((u) => u.email.toLowerCase() === cleanEmail || u.username.toLowerCase() === cleanUsername);
+
+    if (user) {
+      const isMatch = bcrypt.compareSync(password, user.password_hash);
+      if (!isMatch) {
+        return res.status(409).json({ error: 'An account with this username or email already exists. Please enter correct password or log in.' });
+      }
+      user.role = 'driver';
+    } else {
+      const password_hash = bcrypt.hashSync(password, 10);
+      const userId = 'usr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+      user = {
+        id: userId,
+        role: 'driver',
+        username: username.toString().trim(),
+        full_name: (full_name || username).toString().trim(),
+        email: cleanEmail,
+        password_hash,
+        mobile_number: mobile_number || '+923000000000',
+        email_verified: 1,
+        created_at: new Date().toISOString(),
+      };
+      db.users.push(user);
     }
 
-    const password_hash = bcrypt.hashSync(password, 10);
-    const userId = 'usr-' + Date.now();
-    const driverId = 'drv-' + Date.now();
+    let driver = db.drivers.find((d) => d.user_id === user.id);
+    const driverId = driver ? driver.id : 'drv-' + Date.now();
+    const vType = service_type_id || vehicle_type || 'Mini';
+
+    if (driver) {
+      if (cnic) driver.cnic = cnic;
+      if (driving_licence) driver.driving_licence = driving_licence;
+      driver.vehicle_type = vType;
+      if (vehicle_brand) driver.vehicle_brand = vehicle_brand;
+      if (vehicle_model) driver.vehicle_model = vehicle_model;
+      if (vehicle_colour || vehicle_color) driver.vehicle_colour = vehicle_colour || vehicle_color;
+      if (vehicle_reg_number) driver.vehicle_reg_number = vehicle_reg_number;
+    } else {
+      driver = {
+        id: driverId,
+        user_id: user.id,
+        cnic: cnic || '35202-0000000-0',
+        driving_licence: driving_licence || 'LIC-00000',
+        vehicle_type: vType,
+        vehicle_brand: vehicle_brand || 'Suzuki',
+        vehicle_model: vehicle_model || 'Alto',
+        vehicle_colour: vehicle_colour || vehicle_color || 'White',
+        vehicle_reg_number: vehicle_reg_number || 'LEA-1234',
+        is_approved: 0,
+        cnic_front_url: cnic_front_url || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+        cnic_back_url: cnic_back_url || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+        licence_doc_url: licence_doc_url || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+        registration_doc_url: registration_doc_url || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+        is_online: 0,
+        current_lat: 31.5204,
+        current_lng: 74.3587,
+        rating: 5.0,
+        total_rides: 0,
+      };
+      db.drivers.push(driver);
+    }
+
+    const sessionToken = `session-tok-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
-    const newUser = {
-      id: userId,
-      role: 'driver',
-      username,
-      full_name,
-      email,
-      password_hash,
-      mobile_number,
-      email_verified: 0,
-      created_at: new Date().toISOString(),
-    };
-
-    const newDriver = {
-      id: driverId,
-      user_id: userId,
-      cnic,
-      driving_licence,
-      vehicle_type,
-      vehicle_brand: vehicle_brand || 'Suzuki',
-      vehicle_model: vehicle_model || 'Alto',
-      vehicle_colour: vehicle_colour || 'White',
-      vehicle_reg_number,
-      is_approved: 0, // Requires manual approval
-      cnic_front_url: cnic_front_url || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
-      cnic_back_url: cnic_back_url || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
-      licence_doc_url: licence_doc_url || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
-      registration_doc_url: registration_doc_url || 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
-      is_online: 0,
-      current_lat: 31.5204,
-      current_lng: 74.3587,
-      rating: 5.0,
-      total_rides: 0,
-    };
-
-    db.users.push(newUser);
-    db.drivers.push(newDriver);
     db.tokens.push({
       id: 'tok-' + Date.now(),
-      email,
+      email: user.email,
       code,
-      token: 'verif-' + Date.now(),
-      expires_at: new Date(Date.now() + 3600000).toISOString(),
+      token: sessionToken,
+      expires_at: new Date(Date.now() + 86400000 * 365).toISOString(),
     });
 
     db.notifications.push({
       id: 'notif-' + Date.now(),
-      user_id: userId,
-      title: 'Email Verification & Driver Registration',
-      message: `Verification code: ${code}. Note: Driver account requires manual admin approval after email verification.`,
+      user_id: user.id,
+      title: 'Driver Registration Submitted',
+      message: 'Your driver application has been submitted for admin verification.',
       is_read: 0,
       type: 'info',
       created_at: new Date().toISOString(),
     });
 
     saveDb(db);
+    const { password_hash, ...safeUser } = user;
     return res.json({
       success: true,
-      message: 'Driver registered. Please verify email.',
-      user_id: userId,
-      email,
+      message: 'Driver registered. Application submitted for approval.',
+      user_id: user.id,
+      email: user.email,
+      token: sessionToken,
+      user: safeUser,
+      driver,
       verification_code_demo: code,
     });
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message || 'Driver registration failed' });
   }
 });
 
@@ -428,23 +452,50 @@ app.post('/api/auth/register-driver', (req, res) => {
 app.post('/api/drivers/register', (req, res) => {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'Authentication required' });
-    const token = authHeader.replace('Bearer ', '');
+    const body = req.body || {};
     db = loadDb();
-    const tokenObj = db.tokens.find((t) => t.token === token);
-    const user = tokenObj ? db.users.find((u) => u.email === tokenObj.email) : db.users.find((u) => token.includes(u.id));
-    if (!user) return res.status(401).json({ error: 'User not found' });
+
+    let user = null;
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const tokenObj = db.tokens.find((t) => t.token === token);
+      user = tokenObj ? db.users.find((u) => u.email.toLowerCase() === tokenObj.email.toLowerCase()) : db.users.find((u) => token.includes(u.id));
+    }
+
+    if (!user && (body.email || body.username)) {
+      const cleanEmail = (body.email || '').toString().trim().toLowerCase();
+      const cleanUsername = (body.username || '').toString().trim().toLowerCase();
+      user = db.users.find((u) => (cleanEmail && u.email.toLowerCase() === cleanEmail) || (cleanUsername && u.username.toLowerCase() === cleanUsername));
+    }
+
+    if (!user) {
+      // Create user on the fly if needed
+      const userId = 'usr-' + Date.now();
+      const passHash = bcrypt.hashSync(body.password || 'driver123', 10);
+      user = {
+        id: userId,
+        role: 'driver',
+        username: body.username || `driver_${Date.now()}`,
+        full_name: body.full_name || 'New Driver',
+        email: body.email || `driver_${Date.now()}@apnicar.pk`,
+        password_hash: passHash,
+        mobile_number: body.mobile_number || '+923000000000',
+        email_verified: 1,
+        created_at: new Date().toISOString(),
+      };
+      db.users.push(user);
+    }
 
     user.role = 'driver';
-    const body = req.body || {};
 
     const existingDriver = db.drivers.find((d) => d.user_id === user.id);
     const driverId = existingDriver ? existingDriver.id : 'drv-' + Date.now();
+    const vType = body.service_type_id || body.vehicle_type || 'Mini';
 
     if (existingDriver) {
       if (body.cnic) existingDriver.cnic = body.cnic;
       if (body.driving_licence) existingDriver.driving_licence = body.driving_licence;
-      if (body.service_type_id || body.vehicle_type) existingDriver.vehicle_type = body.service_type_id || body.vehicle_type;
+      existingDriver.vehicle_type = vType;
       if (body.vehicle_brand) existingDriver.vehicle_brand = body.vehicle_brand;
       if (body.vehicle_model) existingDriver.vehicle_model = body.vehicle_model;
       if (body.vehicle_colour || body.vehicle_color) existingDriver.vehicle_colour = body.vehicle_colour || body.vehicle_color;
@@ -459,7 +510,7 @@ app.post('/api/drivers/register', (req, res) => {
         user_id: user.id,
         cnic: body.cnic || '35202-0000000-0',
         driving_licence: body.driving_licence || 'LIC-00000',
-        vehicle_type: body.service_type_id || body.vehicle_type || 'Car',
+        vehicle_type: vType,
         vehicle_brand: body.vehicle_brand || 'Suzuki',
         vehicle_model: body.vehicle_model || 'Alto',
         vehicle_colour: body.vehicle_colour || body.vehicle_color || 'White',
@@ -503,10 +554,29 @@ app.post('/api/drivers/register', (req, res) => {
         });
       }
     }
+
+    const sessionToken = `session-tok-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    db.tokens.push({
+      id: 'tok-' + Date.now(),
+      email: user.email,
+      token: sessionToken,
+      expires_at: new Date(Date.now() + 86400000 * 365).toISOString(),
+    });
+
     saveDb(db);
-    return res.json({ success: true, message: 'Driver registration submitted for admin approval', driver_id: driverId });
+    const { password_hash, ...safeUser } = user;
+    const currentDriver = db.drivers.find((d) => d.user_id === user.id);
+
+    return res.json({
+      success: true,
+      message: 'Driver registration submitted for admin approval',
+      driver_id: driverId,
+      driver: currentDriver,
+      user: safeUser,
+      token: sessionToken,
+    });
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message || 'Driver registration failed' });
   }
 });
 
