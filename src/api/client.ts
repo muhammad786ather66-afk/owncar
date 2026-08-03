@@ -693,5 +693,11 @@ export const api = {
       },
     };
   },
+
+  // Health Check & Debug Panel APIs
+  getDebugDatabase: () => request<any>('/api/debug/database'),
+  getDebugCloudinary: () => request<any>('/api/debug/cloudinary'),
+  getDebugSystem: () => request<any>('/api/debug/system'),
+  getDebugRegistration: () => request<any>('/api/debug/registration'),
 };
 

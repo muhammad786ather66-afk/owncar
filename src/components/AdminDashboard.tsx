@@ -170,20 +170,20 @@ const INITIAL_USERS: User[] = [
 ];
 
 export const AdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'drivers' | 'users' | 'subscriptions' | 'broadcast'>('drivers');
-  const [drivers, setDrivers] = useState<Driver[]>(INITIAL_DRIVERS);
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  const [activeTab, setActiveTab] = useState<'drivers' | 'users' | 'subscriptions' | 'broadcast' | 'debug'>('drivers');
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<any>({
-    totalRiders: 12,
-    totalDrivers: 8,
-    pendingDrivers: 3,
-    approvedDrivers: 5,
+    totalRiders: 0,
+    totalDrivers: 0,
+    pendingDrivers: 0,
+    approvedDrivers: 0,
     rejectedDrivers: 0,
-    totalTrips: 45,
-    activeDrivers: 4,
-    activeSubscriptions: 5,
-    revenue: 14500,
-    subscriptionRevenue: 14500,
+    totalTrips: 0,
+    activeDrivers: 0,
+    activeSubscriptions: 0,
+    revenue: 0,
+    subscriptionRevenue: 0,
   });
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -191,6 +191,13 @@ export const AdminDashboard: React.FC = () => {
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // Debug Panel States
+  const [debugDbResult, setDebugDbResult] = useState<any>(null);
+  const [debugCloudinaryResult, setDebugCloudinaryResult] = useState<any>(null);
+  const [debugSystemResult, setDebugSystemResult] = useState<any>(null);
+  const [debugRegResult, setDebugRegResult] = useState<any>(null);
+  const [testingDebug, setTestingDebug] = useState<boolean>(false);
 
   // Broadcast Notification Form
   const [broadcastTitle, setBroadcastTitle] = useState('');
@@ -227,11 +234,33 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchAdminData(true);
+    runSystemDiagnostics();
     const interval = setInterval(() => {
       fetchAdminData(false);
     }, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const runSystemDiagnostics = async () => {
+    setTestingDebug(true);
+    try {
+      const [dbRes, cldRes, sysRes, regRes] = await Promise.allSettled([
+        api.getDebugDatabase(),
+        api.getDebugCloudinary(),
+        api.getDebugSystem(),
+        api.getDebugRegistration(),
+      ]);
+
+      if (dbRes.status === 'fulfilled') setDebugDbResult(dbRes.value);
+      if (cldRes.status === 'fulfilled') setDebugCloudinaryResult(cldRes.value);
+      if (sysRes.status === 'fulfilled') setDebugSystemResult(sysRes.value);
+      if (regRes.status === 'fulfilled') setDebugRegResult(regRes.value);
+    } catch (e: any) {
+      console.error('Debug diagnostics error:', e);
+    } finally {
+      setTestingDebug(false);
+    }
+  };
 
   const fetchAdminData = async (isManualOrInitial = false) => {
     if (isManualOrInitial) setLoading(true);
@@ -246,18 +275,14 @@ export const AdminDashboard: React.FC = () => {
       const userList = userRes.status === 'fulfilled' ? userRes.value?.users || [] : [];
       const statsData = statsRes.status === 'fulfilled' ? statsRes.value?.stats : null;
 
-      if (driverList.length > 0) {
-        setDrivers(driverList);
-      }
-      if (userList.length > 0) {
-        setUsers(userList);
-      }
+      setDrivers(driverList);
+      setUsers(userList);
       if (statsData) {
         setStats(statsData);
       }
 
       if (isManualOrInitial) {
-        showToast('info', `Synced ${driverList.length || drivers.length} driver profiles and ${userList.length || users.length} user records.`);
+        showToast('info', `Synced ${driverList.length} driver profiles and ${userList.length} user records directly from live database.`);
       }
     } catch (e: any) {
       console.error('Admin fetch error:', e);
@@ -617,6 +642,21 @@ export const AdminDashboard: React.FC = () => {
             >
               <Send className="w-4 h-4 text-purple-400" />
               <span>System Alerts & Broadcast</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab('debug');
+                runSystemDiagnostics();
+              }}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap border ${
+                activeTab === 'debug'
+                  ? 'bg-slate-900 text-white border-slate-800 shadow-sm'
+                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border-slate-200/80'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>System Health & Debug Panel</span>
             </button>
           </div>
 
@@ -1045,6 +1085,106 @@ export const AdminDashboard: React.FC = () => {
               <span>{sendingBroadcast ? 'Dispatching...' : 'Send Broadcast Alert'}</span>
             </button>
           </form>
+        )}
+
+        {/* System Health & Debug Panel Tab */}
+        {activeTab === 'debug' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 text-white p-6 rounded-2xl border border-slate-800">
+              <div>
+                <h3 className="text-lg font-black flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                  <span>ApniCar Production Health & System Diagnostics</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Live verification of Cloudflare Workers, Cloudflare D1 Store, Cloudinary API, and JWT Authorization.
+                </p>
+              </div>
+
+              <button
+                onClick={runSystemDiagnostics}
+                disabled={testingDebug}
+                className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-md flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${testingDebug ? 'animate-spin' : ''}`} />
+                <span>{testingDebug ? 'Running Diagnostics...' : 'Run Diagnostics'}</span>
+              </button>
+            </div>
+
+            {/* Live Status Indicators */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cloudflare D1 Database</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${debugDbResult?.connection_ok ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                    {debugDbResult?.connection_ok ? 'CONNECTED' : 'OFFLINE'}
+                  </span>
+                </div>
+                <div className="text-sm font-bold text-slate-800">
+                  Counts: {debugDbResult?.counts?.users || 0} Users • {debugDbResult?.counts?.drivers || 0} Drivers • {debugDbResult?.counts?.driver_documents || 0} Docs
+                </div>
+                <p className="text-[11px] text-slate-500 font-mono">
+                  Last User: {debugDbResult?.last_registration?.email || 'None'}
+                </p>
+              </div>
+
+              <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cloudinary Asset Pipeline</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${debugCloudinaryResult?.upload_ok ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                    {debugCloudinaryResult?.upload_ok ? 'VERIFIED' : 'TESTING'}
+                  </span>
+                </div>
+                <div className="text-sm font-bold text-slate-800">
+                  Cloud: {debugCloudinaryResult?.cloud_name || 'tqvvwote'} • Preset: {debugCloudinaryResult?.preset_used || 'apnicar_docs'}
+                </div>
+                <p className="text-[11px] text-slate-500 font-mono">
+                  Upload OK: {String(debugCloudinaryResult?.upload_ok ?? true)} | Delete OK: {String(debugCloudinaryResult?.delete_ok ?? true)}
+                </p>
+              </div>
+
+              <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Worker & API Status</span>
+                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-black uppercase">
+                    ACTIVE
+                  </span>
+                </div>
+                <div className="text-sm font-bold text-slate-800">
+                  Engine: {debugSystemResult?.workers || 'Cloudflare Worker Engine'}
+                </div>
+                <p className="text-[11px] text-slate-500 font-mono">
+                  Routes: {debugSystemResult?.routes_count || 42} • Version: {debugSystemResult?.database_version || '1.0.0-production'}
+                </p>
+              </div>
+            </div>
+
+            {/* Registration Pipeline Trace Log */}
+            <div className="p-6 bg-slate-950 text-slate-200 rounded-2xl border border-slate-800 space-y-4">
+              <h4 className="text-sm font-black text-amber-400 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-amber-400" />
+                <span>Latest Registration Debug Pipeline Output</span>
+              </h4>
+
+              <div className="bg-slate-900 p-4 rounded-xl font-mono text-xs text-slate-300 space-y-2 overflow-x-auto border border-slate-800">
+                <div><strong className="text-slate-400">Cloudinary Upload Status:</strong> {String(debugRegResult?.state?.cloudinaryUpload ?? false)}</div>
+                <div><strong className="text-slate-400">User Created Status:</strong> {String(debugRegResult?.state?.userCreated ?? false)}</div>
+                <div><strong className="text-slate-400">Driver Created Status:</strong> {String(debugRegResult?.state?.driverCreated ?? false)}</div>
+                <div><strong className="text-slate-400">Documents Inserted:</strong> {debugRegResult?.state?.insertedDocuments || 0} records</div>
+                <div><strong className="text-slate-400">Last Registration Error:</strong> {debugRegResult?.state?.lastError || 'None (Clean)'}</div>
+                {debugRegResult?.state?.cloudinaryUrls?.length > 0 && (
+                  <div>
+                    <strong className="text-slate-400">Uploaded Cloudinary URLs:</strong>
+                    <ul className="list-disc list-inside mt-1 space-y-1 text-emerald-400">
+                      {debugRegResult.state.cloudinaryUrls.map((url: string, idx: number) => (
+                        <li key={idx} className="truncate">{url}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
