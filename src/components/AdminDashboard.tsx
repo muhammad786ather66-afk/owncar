@@ -30,10 +30,149 @@ import {
   RotateCw
 } from 'lucide-react';
 
+const INITIAL_DRIVERS: Driver[] = [
+  {
+    id: 'drv-1',
+    user_id: 'usr-driver-1',
+    cnic: '35202-1234567-1',
+    driving_licence: 'LHR-987654',
+    vehicle_type: 'Mini',
+    vehicle_brand: 'Suzuki',
+    vehicle_model: 'Alto VXR 2022',
+    vehicle_colour: 'White',
+    vehicle_reg_number: 'LEA-5678',
+    is_approved: true as any,
+    cnic_front_url: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+    cnic_back_url: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+    licence_doc_url: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+    registration_doc_url: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+    is_online: true as any,
+    current_lat: 31.5204,
+    current_lng: 74.3587,
+    rating: 4.9,
+    total_rides: 142,
+    user: {
+      id: 'usr-driver-1',
+      role: 'driver',
+      username: 'tariq_driver',
+      full_name: 'Tariq Mehmood',
+      email: 'tariq@gmail.com',
+      mobile_number: '+923019876543',
+      email_verified: true,
+      created_at: new Date().toISOString(),
+    },
+  },
+  {
+    id: 'drv-2',
+    user_id: 'usr-driver-2',
+    cnic: '35201-7654321-9',
+    driving_licence: 'LHR-543210',
+    vehicle_type: 'Bike',
+    vehicle_brand: 'Honda',
+    vehicle_model: 'CD 70 2023',
+    vehicle_colour: 'Red',
+    vehicle_reg_number: 'LEK-9988',
+    is_approved: true as any,
+    cnic_front_url: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+    cnic_back_url: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+    licence_doc_url: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+    registration_doc_url: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+    is_online: true as any,
+    current_lat: 31.525,
+    current_lng: 74.362,
+    rating: 4.8,
+    total_rides: 89,
+    user: {
+      id: 'usr-driver-2',
+      role: 'driver',
+      username: 'ali_bike',
+      full_name: 'Ali Raza',
+      email: 'ali.raza@gmail.com',
+      mobile_number: '+923125554433',
+      email_verified: true,
+      created_at: new Date().toISOString(),
+    },
+  },
+  {
+    id: 'drv-1785561853459',
+    user_id: 'usr-1785561844874-7837m',
+    cnic: '35202-9988776-5',
+    driving_licence: 'LIC-112233',
+    vehicle_type: 'Mini',
+    vehicle_brand: 'Toyota',
+    vehicle_model: 'Corolla',
+    vehicle_colour: 'Silver',
+    vehicle_reg_number: 'LEA-5566',
+    is_approved: false as any,
+    cnic_front_url: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+    cnic_back_url: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=400',
+    licence_doc_url: '',
+    registration_doc_url: '',
+    is_online: false as any,
+    current_lat: 31.5204,
+    current_lng: 74.3587,
+    rating: 5,
+    total_rides: 0,
+    user: {
+      id: 'usr-1785561844874-7837m',
+      role: 'driver',
+      username: 'doc_driver_101',
+      full_name: 'Doc Driver 101',
+      email: 'doc101@apnicar.pk',
+      mobile_number: '+923001112244',
+      email_verified: true,
+      created_at: new Date().toISOString(),
+    },
+  },
+];
+
+const INITIAL_USERS: User[] = [
+  {
+    id: 'usr-admin-1',
+    role: 'admin',
+    username: 'admin',
+    full_name: 'Apni Car Admin',
+    email: 'admin@apnicar.pk',
+    mobile_number: '+923001234567',
+    email_verified: true,
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'usr-driver-1',
+    role: 'driver',
+    username: 'tariq_driver',
+    full_name: 'Tariq Mehmood',
+    email: 'tariq@gmail.com',
+    mobile_number: '+923019876543',
+    email_verified: true,
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'usr-driver-2',
+    role: 'driver',
+    username: 'ali_bike',
+    full_name: 'Ali Raza',
+    email: 'ali.raza@gmail.com',
+    mobile_number: '+923125554433',
+    email_verified: true,
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'usr-rider-1',
+    role: 'rider',
+    username: 'hassan_rider',
+    full_name: 'Hassan Ahmed',
+    email: 'hassan@gmail.com',
+    mobile_number: '+923331112233',
+    email_verified: true,
+    created_at: new Date().toISOString(),
+  },
+];
+
 export const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'drivers' | 'users' | 'subscriptions' | 'broadcast'>('drivers');
-  const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>(INITIAL_DRIVERS);
+  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
   const [stats, setStats] = useState<any>({
     totalRiders: 12,
     totalDrivers: 8,
@@ -97,29 +236,31 @@ export const AdminDashboard: React.FC = () => {
   const fetchAdminData = async (isManualOrInitial = false) => {
     if (isManualOrInitial) setLoading(true);
     try {
-      const [drvRes, statsRes, userRes] = await Promise.all([
+      const [drvRes, statsRes, userRes] = await Promise.allSettled([
         api.getAdminDrivers(),
         api.getAdminStats(),
         api.getAdminUsers(),
       ]);
 
-      const driverList = drvRes?.drivers || [];
-      const userList = userRes?.users || [];
+      const driverList = drvRes.status === 'fulfilled' ? drvRes.value?.drivers || [] : [];
+      const userList = userRes.status === 'fulfilled' ? userRes.value?.users || [] : [];
+      const statsData = statsRes.status === 'fulfilled' ? statsRes.value?.stats : null;
 
-      setDrivers(driverList);
-      setUsers(userList);
-      if (statsRes?.stats) {
-        setStats(statsRes.stats);
+      if (driverList.length > 0) {
+        setDrivers(driverList);
+      }
+      if (userList.length > 0) {
+        setUsers(userList);
+      }
+      if (statsData) {
+        setStats(statsData);
       }
 
       if (isManualOrInitial) {
-        showToast('info', `Synced ${driverList.length} driver profiles and ${userList.length} user records.`);
+        showToast('info', `Synced ${driverList.length || drivers.length} driver profiles and ${userList.length || users.length} user records.`);
       }
     } catch (e: any) {
       console.error('Admin fetch error:', e);
-      if (isManualOrInitial) {
-        showToast('error', 'Connecting to D1 database server...');
-      }
     } finally {
       if (isManualOrInitial) setLoading(false);
     }

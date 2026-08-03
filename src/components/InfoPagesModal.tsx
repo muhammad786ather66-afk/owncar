@@ -13,8 +13,9 @@ export const InfoPagesModal: React.FC<Props> = ({ isOpen, onClose, defaultTab = 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in overflow-y-auto">
-      <div className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 my-6 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-6 animate-fade-in">
+      <div className="flex min-h-full items-center justify-center">
+        <div className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 my-auto flex flex-col max-h-[90vh]">
         {/* Top Header */}
         <div className="bg-slate-900 p-6 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -301,5 +302,6 @@ export const InfoPagesModal: React.FC<Props> = ({ isOpen, onClose, defaultTab = 
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 };

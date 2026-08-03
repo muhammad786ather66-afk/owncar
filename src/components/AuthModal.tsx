@@ -12,6 +12,8 @@ interface Props {
 }
 
 export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) => {
+  if (!isOpen) return null;
+
   const [activeTab, setActiveTab] = useState<'login' | 'register_rider' | 'register_driver' | 'verify'>('login');
   const [role, setRole] = useState<'rider' | 'driver'>('rider');
 
@@ -250,9 +252,10 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in overflow-y-auto">
-      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 my-8">
-        {/* Top Header */}
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-6 animate-fade-in">
+      <div className="flex min-h-full items-center justify-center">
+        <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 my-auto">
+          {/* Top Header */}
         <div className="bg-slate-900 p-6 text-white relative">
           <div className="absolute top-4 right-4 flex items-center gap-2">
             <button
@@ -750,5 +753,6 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onLoginSuccess }) 
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 };

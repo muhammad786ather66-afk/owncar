@@ -39,8 +39,9 @@ export const ProfileModal: React.FC<Props> = ({ isOpen, onClose, user, driver, o
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-md p-3 sm:p-6 animate-fade-in">
+      <div className="flex min-h-full items-center justify-center">
+        <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 my-auto">
         {/* Header */}
         <div className="bg-slate-900 p-6 text-white text-center relative">
           <div className="absolute top-4 right-4 flex items-center gap-2">
@@ -119,5 +120,6 @@ export const ProfileModal: React.FC<Props> = ({ isOpen, onClose, user, driver, o
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 };
